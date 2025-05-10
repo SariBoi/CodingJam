@@ -393,10 +393,9 @@ export class SettingsView {
         }
         
         // Get the timer behavior group or create it
-        let group = this.settingsForm.querySelector('label:contains("Timer Behavior")');
-        if (!group) {
-            return; // Should be created by addAutoStartOption
-        }
+        let group = Array.from(this.settingsForm.querySelectorAll('label')).find(
+            label => label.textContent.includes('Timer Behavior')
+        );
         
         group = group.parentNode;
         
