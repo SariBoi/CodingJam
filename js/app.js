@@ -46,9 +46,9 @@ class App {
         this.taskView = new TaskView(this);
         this.timerView = new TimerView(this);
         this.settingsView = new SettingsView(this);
-        
+
         // Initialize controllers that depend on views
-        this.timerController = new TimerController(this.taskController, this.notificationService, this.timerView);
+        this.timerController = new TimerController(this.taskController, this.notificationService, this.timerView, this);
         this.calendarController = new CalendarController(this.taskController);
         this.reminderService = new ReminderService(this.taskController, this.notificationService);
         
@@ -136,13 +136,15 @@ class App {
 
     /**
      * Refresh task lists
+     * @param {string} selectedTaskId Optional ID of the selected task for highlighting
      */
-    refreshTaskLists() {
+    refreshTaskLists(selectedTaskId = null) {
         // Use TaskView to refresh tasks
         if (this.taskView) {
-            this.taskView.refreshTaskLists();
+            this.taskView.refreshTaskLists(selectedTaskId);
         }
     }
+
 
     /**
      * Update settings form with current values
@@ -229,20 +231,58 @@ class App {
             }
         }
         
-        // Set the active task in the timer controller
-        const success = this.timerController.setActiveTask(task);
+        // First select the task if it's not already the active task
+        if (!this.timerController.activeTask || this.timerController.activeTask.id !== taskId) {
+            this.selectTask(taskId);
+        }
         
-        if (success) {
-            // Start the timer
+        // Now start the timer for the selected task
+        if (this.timerController.activeTask && this.timerController.activeTask.id === taskId) {
             this.timerController.startTimer();
             
-            // Refresh the task lists
-            this.refreshTaskLists();
+            // Refresh the task lists to update status
+            this.refreshTaskLists(taskId);
             
             // Refresh the calendar
-            this.calendarController.refreshCalendar();
+            if (this.calendarController) {
+                this.calendarController.refreshCalendar();
+            }
+        }
+        
+    }
+
+     /**
+     * Select a task by ID (without starting it)
+     * @param {string} taskId Task ID
+     */
+    selectTask(taskId) {
+        // Get the task to select
+        const task = this.taskController.getTaskById(taskId);
+        if (!task) return;
+        
+        // Check if a task is already active
+        const activeTask = this.timerController.activeTask;
+        
+        // If there's an active task that's running, pause it
+        if (activeTask && this.timerController.timerState === 'running') {
+            this.timerController.pauseTimer();
+        }
+        
+        // Set the active task in the timer controller (but don't start it)
+        const success = this.timerController.setActiveTask(task, false); // Pass false to not auto-confirm switching
+        
+        if (success) {
+            // Refresh the task lists with the new selected task
+            this.refreshTaskLists(taskId); // Pass selected task ID for highlighting
+            
+            // Refresh the calendar
+            if (this.calendarController) {
+                this.calendarController.refreshCalendar();
+            }
         }
     }
+
+
 }
 
 // Initialize the app when the DOM is fully loaded

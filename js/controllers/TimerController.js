@@ -17,11 +17,13 @@ export class TimerController {
      * @param {TaskController} taskController Reference to the TaskController
      * @param {NotificationService} notificationService Reference to the NotificationService
      * @param {TimerView} timerView Reference to the TimerView
+     * @param {Object} app Reference to the main app instance
      */
-    constructor(taskController, notificationService, timerView = null) {
+    constructor(taskController, notificationService, timerView = null, app = null) {
         this.taskController = taskController;
         this.notificationService = notificationService;
         this.timerView = timerView;
+        this.app = app; // Store reference to the app instance
         this.activeTask = null;
         this.currentSession = null;
         this.timerState = 'stopped'; // 'running', 'paused', 'stopped'
@@ -176,16 +178,20 @@ export class TimerController {
     /**
      * Set the active task for the timer
      * @param {Task} task Task object
+     * @param {boolean} autoConfirm Whether to automatically confirm switching tasks
+     * @returns {boolean} Success flag
      */
-    setActiveTask(task) {
+    setActiveTask(task, autoConfirm = true) {
         // If a task is already active and different from the new one, confirm switch
         if (this.activeTask && this.activeTask.id !== task.id && this.timerState !== 'stopped') {
-            if (!confirm('Another task is currently in progress. Switch to the new task?')) {
+            if (!autoConfirm && !confirm('Another task is currently in progress. Switch to the new task?')) {
                 return false;
             }
             
-            // Stop the current timer
-            this.stopTimer();
+            // Pause the current timer if it's running
+            if (this.timerState === 'running') {
+                this.pauseTimer();
+            }
         }
         
         // Set the new active task
@@ -374,6 +380,16 @@ export class TimerController {
             
             // Get the next session
             this.currentSession = this.activeTask.getCurrentSession();
+            
+            // Refresh the task list to update progress
+            if (this.app && this.app.taskView) {
+                this.app.taskView.refreshTaskLists(this.activeTask.id);
+            }
+            
+            // Refresh the calendar if available
+            if (this.app && this.app.calendarController) {
+                this.app.calendarController.refreshCalendar();
+            }
             
             // Check if all sessions are completed
             if (!this.currentSession) {

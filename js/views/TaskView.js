@@ -31,12 +31,15 @@ export class TaskView {
      * Initialize event listeners for task form elements
      */
     initTaskFormListeners() {
-        // Custom timer inputs toggle
-        const timerCustomRadio = document.getElementById('timer-custom');
-        if (timerCustomRadio) {
-            timerCustomRadio.addEventListener('change', () => {
-                document.getElementById('custom-timer-inputs').style.display = 
-                    timerCustomRadio.checked ? 'block' : 'none';
+        // All timer preset radio buttons
+        const timerPresetRadios = document.querySelectorAll('input[name="timer-preset"]');
+        if (timerPresetRadios.length > 0) {
+            timerPresetRadios.forEach(radio => {
+                radio.addEventListener('change', () => {
+                    // Only show custom inputs if custom is selected
+                    document.getElementById('custom-timer-inputs').style.display = 
+                        document.getElementById('timer-custom').checked ? 'block' : 'none';
+                });
             });
         }
         
@@ -67,12 +70,40 @@ export class TaskView {
     }
 
     /**
-     * Refresh all task lists
+     * Format duration in hours and minutes
+     * @param {number} durationInHours Duration in hours (decimal)
+     * @returns {string} Formatted duration string
      */
-    refreshTaskLists() {
+    formatDuration(durationInHours) {
+        const totalMinutes = Math.round(durationInHours * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        
+        if (hours === 0) {
+            return `${minutes} mins`;
+        } else if (minutes === 0) {
+            return `${hours} hr`;
+        } else {
+            return `${hours} hr ${minutes} mins`;
+        }
+    }
+
+    /**
+     * Refresh all task lists
+     * @param {string} selectedTaskId Optional ID of the selected task for highlighting
+     */
+    refreshTaskLists(selectedTaskId = null) {
         // Only proceed if containers exist
         if (!this.elements.ongoingTasksContainer || !this.elements.completedTasksContainer) {
             return;
+        }
+        
+        // Get currently selected task ID if not provided
+        if (!selectedTaskId && this.app && this.app.timerController) {
+            const activeTask = this.app.timerController.activeTask;
+            if (activeTask) {
+                selectedTaskId = activeTask.id;
+            }
         }
         
         // Clear containers
@@ -95,7 +126,14 @@ export class TaskView {
             `;
         } else {
             ongoingTasks.forEach(task => {
-                this.elements.ongoingTasksContainer.appendChild(this.createTaskElement(task));
+                const taskElement = this.createTaskElement(task);
+                
+                // Add selected class if this is the selected task
+                if (selectedTaskId && task.id === selectedTaskId) {
+                    taskElement.classList.add('task-selected');
+                }
+                
+                this.elements.ongoingTasksContainer.appendChild(taskElement);
             });
         }
         
@@ -161,7 +199,7 @@ export class TaskView {
         
         if (task.estimatedDuration) {
             if (detailsText) detailsText += ' | ';
-            detailsText += `Duration: ${task.estimatedDuration} hr`;
+            detailsText += `Duration: ${this.formatDuration(task.estimatedDuration)}`;
         }
         
         taskDetails.textContent = detailsText;
@@ -245,8 +283,11 @@ export class TaskView {
         taskItem.appendChild(taskActions);
         
         // Add click handler to show task details
-        taskItem.addEventListener('click', () => {
-            this.editTask(task.id);
+        taskItem.addEventListener('click', (e) => {
+            // Don't select if clicking on a button in the task
+            if (e.target.tagName !== 'BUTTON') {
+                this.selectTask(task.id);
+            }
         });
         
         return taskItem;
@@ -270,6 +311,16 @@ export class TaskView {
         const task = this.app.taskController.getTaskById(taskId);
         if (task) {
             this.showTaskModal(task);
+        }
+    }
+
+     /**
+     * Select a task without starting it
+     * @param {string} taskId Task ID
+     */
+    selectTask(taskId) {
+        if (this.app && this.app.selectTask) {
+            this.app.selectTask(taskId);
         }
     }
 
@@ -317,7 +368,14 @@ export class TaskView {
                 document.getElementById('task-start-time').value = taskData.startTime;
             }
             
-            document.getElementById('task-duration').value = taskData.estimatedDuration;
+            // Split duration into hours and minutes
+            const totalHours = taskData.estimatedDuration;
+            const hours = Math.floor(totalHours);
+            const minutes = Math.round((totalHours - hours) * 60);
+            
+            document.getElementById('task-duration-hours').value = hours;
+            document.getElementById('task-duration-minutes').value = minutes;
+            
             document.getElementById('task-priority').value = taskData.priority;
             
             if (taskData.timerSettings?.useCustomTimer) {
@@ -385,7 +443,12 @@ export class TaskView {
         const dueTime = document.getElementById('task-due-time').value;
         const startDate = document.getElementById('task-start-date').value;
         const startTime = document.getElementById('task-start-time').value;
-        const duration = parseFloat(document.getElementById('task-duration').value);
+        
+        // Get duration from hours and minutes inputs
+        const durationHours = parseFloat(document.getElementById('task-duration-hours').value) || 0;
+        const durationMinutes = parseFloat(document.getElementById('task-duration-minutes').value) || 0;
+        const duration = durationHours + (durationMinutes / 60); // Convert to hours
+        
         const priority = document.getElementById('task-priority').value;
         
         // Validate required fields
@@ -394,8 +457,8 @@ export class TaskView {
             return;
         }
         
-        if (isNaN(duration) || duration <= 0) {
-            alert('Please enter a valid duration');
+        if (durationHours === 0 && durationMinutes === 0) {
+            alert('Please enter a valid duration (at least 1 minute)');
             return;
         }
         

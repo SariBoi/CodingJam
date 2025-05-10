@@ -86,10 +86,13 @@ export class Task {
         // Sessions (calculated based on estimated duration)
         this.sessions = taskData.sessions || this.calculateSessions();
         
+        // Count only focus sessions for progress tracking
+        const focusSessions = this.sessions.filter(s => s.type === SessionType.FOCUS);
+        
         // Progress tracking
         this.progress = taskData.progress || {
             completedSessions: 0,
-            totalSessions: this.sessions.length,
+            totalSessions: focusSessions.length, // Only count focus sessions
             currentSession: 0,
             timeSpent: 0 // In minutes
         };
@@ -205,7 +208,7 @@ export class Task {
             const session = this.sessions[currentIndex];
             session.completed = true;
             
-            // Update progress
+            // Update progress, only count focus sessions
             if (session.type === SessionType.FOCUS) {
                 this.progress.completedSessions++;
             }
@@ -216,8 +219,9 @@ export class Task {
             // Update task timeSpent
             this.progress.timeSpent += session.duration;
             
-            // If all sessions are completed, mark task as completed
-            if (this.progress.currentSession >= this.sessions.length) {
+            // Check if all focus sessions are completed
+            const focusSessions = this.sessions.filter(s => s.type === SessionType.FOCUS);
+            if (this.progress.completedSessions >= focusSessions.length) {
                 this.status = TaskStatus.COMPLETED;
             }
         }
@@ -231,6 +235,22 @@ export class Task {
      */
     getCurrentSession() {
         return this.sessions[this.progress.currentSession] || null;
+    }
+
+    /**
+     * Get count of focus sessions
+     * @returns {number} Number of focus sessions
+     */
+    getFocusSessionCount() {
+        return this.sessions.filter(s => s.type === SessionType.FOCUS).length;
+    }
+
+    /**
+     * Get the number of completed focus sessions
+     * @returns {number} Number of completed focus sessions
+     */
+    getCompletedFocusSessions() {
+        return this.progress.completedSessions;
     }
 
     /**
@@ -286,8 +306,10 @@ export class Task {
      * @returns {number} Completion percentage (0-100)
      */
     getCompletionPercentage() {
-        if (this.progress.totalSessions === 0) return 0;
-        return Math.round((this.progress.completedSessions / this.progress.totalSessions) * 100);
+        const focusSessions = this.getFocusSessionCount();
+        if (focusSessions === 0) return 0;
+        
+        return Math.round((this.progress.completedSessions / focusSessions) * 100);
     }
 
     /**
@@ -355,9 +377,10 @@ export class Task {
         }
         
         // Reset progress
+        const focusSessions = taskData.sessions.filter(s => s.type === SessionType.FOCUS).length;
         taskData.progress = {
             completedSessions: 0,
-            totalSessions: taskData.sessions.length,
+            totalSessions: focusSessions, // Only count focus sessions
             currentSession: 0,
             timeSpent: 0
         };
