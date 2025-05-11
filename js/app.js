@@ -5,21 +5,21 @@
  * Initializes all controllers and components.
  */
 
-import { StorageManager } from './services/StorageManager.js';
-import { Settings } from './models/Settings.js';
-import { TaskController } from './controllers/TaskController.js';
-import { TimerController } from './controllers/TimerController.js';
-import { CalendarController } from './controllers/CalendarController.js';
-import { NotificationService } from './services/NotificationService.js';
-import { ReminderService } from './services/ReminderService.js';
-import { TaskView } from './views/TaskView.js';
-import { TimerView } from './views/TimerView.js';
-import { SettingsView } from './views/SettingsView.js';
-import { AnalyticsService } from './services/AnalyticsService.js';
-import { FocusModeManager } from './services/FocusModeManager.js';
-import { RecurringTaskManager } from './services/RecurringTaskManager.js';
-import { ThemeManager } from './services/ThemeManager.js';
-import { ErrorHandler } from './services/ErrorHandler.js';
+import { StorageManager } from '../js/services/StorageManager.js';
+import { Settings } from '../js/models/Settings.js';
+import { TaskController } from '../js/controllers/TaskController.js';
+import { TimerController } from '../js/controllers/TimerController.js';
+import { CalendarController } from '../js/controllers/CalendarController.js';
+import { NotificationService } from '../js/services/NotificationService.js';
+import { ReminderService } from '../js/services/ReminderService.js';
+import { TaskView } from '../js/views/TaskView.js';
+import { TimerView } from '../js/views/TimerView.js';
+import { SettingsView } from '../js/views/SettingsView.js';
+import { AnalyticsService } from '../js/services/AnalyticsService.js';
+import { FocusModeManager } from '../js/services/FocusModeManager.js';
+import { RecurringTaskManager } from '../js/services/RecurringTaskManager.js';
+import { ThemeManager } from '../js/services/ThemeManager.js';
+import { ErrorHandler } from '../js/services/ErrorHandler.js';
 
 /**
  * Main App class
@@ -67,6 +67,8 @@ class App {
         // Initialize recurring tasks
         this.recurringTaskManager.checkAndScheduleRecurringTasks();
         
+        this.initializeComponents();
+    
         console.log('Pomodoro Scheduler App initialized');
     }
 
@@ -109,6 +111,23 @@ class App {
         }
     }
 
+    initializeComponents() {
+    // Make sure controllers are properly set up
+    if (this.timerController && this.timerView) {
+        console.log('Ensuring timer components are properly connected');
+        
+        // This will ensure the TimerView's event handlers have access to the TimerController
+        if (typeof this.timerView.setupEventListeners === 'function') {
+            this.timerView.setupEventListeners();
+        }
+        
+        // Initialize the controls to the correct state
+        this.timerController.updateControlButtons();
+        
+        console.log('Timer components connection completed');
+    }
+}
+
     /**
      * Set up sidebar tabs
      */
@@ -144,7 +163,7 @@ class App {
             this.taskView.refreshTaskLists(selectedTaskId);
         }
     }
-
+    
 
     /**
      * Update settings form with current values

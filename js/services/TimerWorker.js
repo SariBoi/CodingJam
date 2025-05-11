@@ -131,9 +131,10 @@ function stopTimer() {
     pausedTime = null;
     originalDuration = 0;
     
-    // Notify main thread
+    // Notify main thread - add isInitialState flag if called during initialization
     self.postMessage({
-        type: 'stopped'
+        type: 'stopped',
+        isInitialState: !timer && !startTime && timeLeft === 0 && !pausedTime
     });
 }
 

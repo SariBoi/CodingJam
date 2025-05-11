@@ -310,71 +310,58 @@ export class TaskFormManager {
      * Save a task from the modal form
      */
     saveTask() {
-        // Get form values
+        // Get common form values
         const taskId = document.getElementById('task-id').value;
-        const name = document.getElementById('task-name').value;
+        const name = document.getElementById('task-name').value.trim();
         const dueDate = document.getElementById('task-due-date').value;
         const dueTime = document.getElementById('task-due-time').value;
         const startDate = document.getElementById('task-start-date').value;
         const startTime = document.getElementById('task-start-time').value;
-        
-        // Get duration from hours and minutes inputs
+
         const durationHours = parseFloat(document.getElementById('task-duration-hours').value) || 0;
         const durationMinutes = parseFloat(document.getElementById('task-duration-minutes').value) || 0;
-        const duration = durationHours + (durationMinutes / 60); // Convert to hours
-        
+        const estimatedDuration = durationHours + (durationMinutes / 60); // Convert to hours
+
         const priority = document.getElementById('task-priority').value;
-        
-        // Validate required fields
+
+        // --- VALIDATIONS ---
         if (!name) {
-            alert('Task name is required');
+            alert('Task name is required.');
             return;
         }
-        
-        if (durationHours === 0 && durationMinutes === 0) {
-            alert('Please enter a valid duration (at least 1 minute)');
+        if (estimatedDuration <= 0) {
+            alert('Please enter a valid estimated duration (at least 1 minute).');
             return;
         }
-        
+
         // Get timer settings
         const timerPreset = document.querySelector('input[name="timer-preset"]:checked').value;
         let focusDuration, breakDuration, useCustomTimer;
-        
+
         if (timerPreset === 'custom') {
             useCustomTimer = true;
             focusDuration = parseInt(document.getElementById('custom-focus-time').value);
             breakDuration = parseInt(document.getElementById('custom-break-time').value);
-            
-            // Validate custom timer values
-            if (isNaN(focusDuration) || focusDuration <= 0 || 
-                isNaN(breakDuration) || breakDuration <= 0) {
-                alert('Please enter valid focus and break durations');
+
+            if (isNaN(focusDuration) || focusDuration <= 0 || isNaN(breakDuration) || breakDuration <= 0) {
+                alert('Please enter valid custom focus and break durations (must be greater than 0).');
                 return;
             }
         } else {
             useCustomTimer = false;
-            
-            // Set durations based on preset
             switch (timerPreset) {
                 case 'short':
-                    focusDuration = 15;
-                    breakDuration = 3;
-                    break;
+                    focusDuration = 15; breakDuration = 3; break;
                 case 'long':
-                    focusDuration = 50;
-                    breakDuration = 10;
-                    break;
-                default: // default
-                    focusDuration = 25;
-                    breakDuration = 5;
-                    break;
+                    focusDuration = 50; breakDuration = 10; break;
+                default: // 'default'
+                    focusDuration = 25; breakDuration = 5; break;
             }
         }
-        
+
         // Get reminder setting
         const reminderValue = document.getElementById('task-reminder').value;
         let reminderTime;
-        
         if (reminderValue === 'none') {
             reminderTime = null;
         } else if (reminderValue === 'default') {
@@ -382,12 +369,9 @@ export class TaskFormManager {
         } else {
             reminderTime = parseInt(reminderValue);
         }
-        
-        // Get other options
+
         const procrastinationMode = document.getElementById('procrastination-mode').checked;
         const isRecurring = document.getElementById('task-recurring').checked;
-        
-        // Get recurring days if applicable
         const recurringDays = [];
         if (isRecurring) {
             for (let i = 0; i < 7; i++) {
@@ -395,22 +379,20 @@ export class TaskFormManager {
                     recurringDays.push(i);
                 }
             }
-            
-            // Validate recurring days
             if (recurringDays.length === 0) {
-                alert('Please select at least one day for recurring tasks');
+                alert('Please select at least one day for recurring tasks.');
                 return;
             }
         }
-        
-        // Create task data object
+
+        // --- Construct taskData object NOW ---
         const taskData = {
             name,
             dueDate: dueDate || null,
             dueTime: dueTime || null,
             startDate: startDate || null,
             startTime: startTime || null,
-            estimatedDuration: duration,
+            estimatedDuration: estimatedDuration, // Use the calculated decimal hour value
             priority,
             timerSettings: {
                 focusDuration,
@@ -421,27 +403,44 @@ export class TaskFormManager {
             procrastinationMode,
             isRecurring,
             recurringDays
+            // Note: status, progress, sessions, etc., are handled by TaskController or Task model
         };
-        
-        // Create or update task
+
+        // --- Handle Task Creation or Update ---
         if (taskId) {
+            // Editing an existing task
+            const originalTask = this.app.taskController.getTaskById(taskId);
+
+            if (originalTask && originalTask.status === 'ongoing') {
+                const originalTimerSettings = originalTask.timerSettings;
+                const newTimerSettings = taskData.timerSettings;
+
+                if (newTimerSettings.focusDuration !== originalTimerSettings.focusDuration ||
+                    newTimerSettings.breakDuration !== originalTimerSettings.breakDuration) {
+                    if (!confirm('Changing focus or break times for an ongoing task will restart the current timer session with the new durations. Continue?')) {
+                        return; // User cancelled
+                    }
+                }
+            }
             this.app.taskController.updateTask(taskId, taskData);
         } else {
+            // Creating a new task
             this.app.taskController.createTask(taskData);
         }
-        
-        // Refresh task lists
+
+        // Refresh UI
         this.taskView.refreshTaskLists();
-        
-        // Refresh the calendar if it exists
         if (this.app.calendarController) {
             this.app.calendarController.refreshCalendar();
         }
-        
+
         // Close the modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('task-modal'));
-        if (modal) {
-            modal.hide();
+        const modalElement = document.getElementById('task-modal');
+        if (modalElement) {
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) {
+                modal.hide();
+            }
         }
     }
 }

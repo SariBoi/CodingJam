@@ -51,70 +51,88 @@ export class TimerView {
      * Set up event listeners for timer controls
      */
     setupEventListeners() {
-        if (this.elements.startBtn) {
-            this.elements.startBtn.addEventListener('click', () => {
-                const timerController = this.app.timerController;
-                
-                if (timerController.timerState === 'stopped') {
-                    // If no task is active, show a message
-                    if (!timerController.activeTask) {
-                        this.showMessage('Please select a task first');
-                        return;
-                    }
-                    
-                    timerController.startTimer();
-                } else if (timerController.timerState === 'paused') {
-                    timerController.resumeTimer();
+    if (this.elements.startBtn) {
+        this.elements.startBtn.addEventListener('click', () => {
+            if (!this.app || !this.app.timerController) {
+                console.error('TimerController not available');
+                return;
+            }
+            
+            const timerController = this.app.timerController;
+            
+            if (timerController.timerState === 'stopped') {
+                // If no task is active, show a message
+                if (!timerController.activeTask) {
+                    this.showMessage('Please select a task first');
+                    return;
                 }
-            });
-        }
-        
-        if (this.elements.pauseBtn) {
-            this.elements.pauseBtn.addEventListener('click', () => {
-                const timerController = this.app.timerController;
                 
-                if (timerController.timerState === 'running') {
-                    timerController.pauseTimer();
-                }
-            });
-        }
-        
-        if (this.elements.endBtn) {
-            this.elements.endBtn.addEventListener('click', () => {
-                const timerController = this.app.timerController;
-                
-                if (timerController.timerState !== 'stopped' && timerController.activeTask) {
-                    if (confirm('Are you sure you want to end this task?')) {
-                        timerController.endTask();
-                        
-                        // Refresh task lists
-                        if (this.app.taskView) {
-                            this.app.taskView.refreshTaskLists();
-                        }
-                        
-                        // Refresh calendar
-                        if (this.app.calendarController) {
-                            this.app.calendarController.refreshCalendar();
-                        }
-                    }
-                }
-            });
-        }
-        
-        if (this.elements.focusModeBtn) {
-            this.elements.focusModeBtn.addEventListener('click', () => {
-                const timerController = this.app.timerController;
-                timerController.toggleFocusMode();
-            });
-        }
-        
-        if (this.focusElements.exitBtn) {
-            this.focusElements.exitBtn.addEventListener('click', () => {
-                const timerController = this.app.timerController;
-                timerController.exitFocusMode();
-            });
-        }
+                timerController.startTimer();
+            } else if (timerController.timerState === 'paused') {
+                timerController.resumeTimer();
+            }
+        });
     }
+    
+    // Improved pause button event listener
+    if (this.elements.pauseBtn) {
+        // Remove any existing click handlers to avoid duplicates
+        const newPauseHandler = () => {
+            console.log('Pause button clicked');
+            
+            if (!this.app || !this.app.timerController) {
+                console.error('TimerController not available');
+                return;
+            }
+            
+            const timerController = this.app.timerController;
+            console.log('Current timer state:', timerController.timerState);
+            
+            if (timerController.timerState === 'running') {
+                console.log('Calling pauseTimer method');
+                timerController.pauseTimer();
+            } else {
+                console.log('Timer not in running state, cannot pause');
+            }
+        };
+        
+        this.elements.pauseBtn.removeEventListener('click', this.pauseClickHandler);
+        this.pauseClickHandler = newPauseHandler;
+        this.elements.pauseBtn.addEventListener('click', this.pauseClickHandler);
+    }
+    
+    if (this.elements.endBtn) {
+        this.elements.endBtn.addEventListener('click', () => {
+            if (!this.app || !this.app.timerController) return;
+            
+            const timerController = this.app.timerController;
+            
+            if (timerController.timerState !== 'stopped' && timerController.activeTask) {
+                if (confirm('Are you sure you want to end this task?')) {
+                    timerController.endTask();
+                }
+            }
+        });
+    }
+    
+    if (this.elements.focusModeBtn) {
+        this.elements.focusModeBtn.addEventListener('click', () => {
+            if (!this.app || !this.app.timerController) return;
+            
+            const timerController = this.app.timerController;
+            timerController.toggleFocusMode();
+        });
+    }
+    
+    if (this.focusElements.exitBtn) {
+        this.focusElements.exitBtn.addEventListener('click', () => {
+            if (!this.app || !this.app.timerController) return;
+            
+            const timerController = this.app.timerController;
+            timerController.exitFocusMode();
+        });
+    }
+}
 
     /**
      * Update the timer display
@@ -239,6 +257,7 @@ export class TimerView {
      */
     updateControlButtons(timerState, hasActiveTask) {
         if (!this.elements.startBtn || !this.elements.pauseBtn || !this.elements.endBtn) {
+            console.error('TimerView.updateControlButtons: Some button elements not found');
             return;
         }
         
@@ -247,7 +266,7 @@ export class TimerView {
         switch (timerState) {
             case 'running':
                 this.elements.startBtn.disabled = true;
-                this.elements.pauseBtn.disabled = false; // IMPORTANT: This should enable the pause button
+                this.elements.pauseBtn.disabled = false; // IMPORTANT: Enable the pause button
                 this.elements.endBtn.disabled = false;
                 console.log('TimerView: Pause button enabled for running state');
                 break;

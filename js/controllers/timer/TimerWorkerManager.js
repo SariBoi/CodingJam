@@ -22,6 +22,7 @@ export class TimerWorkerManager {
     /**
      * Initialize the Web Worker
      */
+
     initWorker() {
         this.worker = new Worker('js/services/TimerWorker.js');
         
@@ -46,6 +47,11 @@ export class TimerWorkerManager {
                 case 'resumed':
                 case 'stopped':
                     if (this.onStateChange) {
+                        // Don't send initial stopped state during initialization
+                        if (data.type === 'stopped' && data.isInitialState) {
+                            console.log('Ignoring initial stopped state from worker');
+                            return;
+                        }
                         this.onStateChange(data.type);
                     }
                     break;

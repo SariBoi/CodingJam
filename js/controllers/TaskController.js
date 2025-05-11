@@ -164,28 +164,48 @@ export class TaskController {
      * @returns {Task|null} Updated Task object or null if not found
      */
     updateTask(taskId, taskData) {
-        const index = this._tasks.findIndex(task => task.id === taskId);
+    const index = this._tasks.findIndex(task => task.id === taskId);
+    
+    if (index !== -1) {
+        // Get the original task before updating
+        const originalTask = this._tasks[index];
+        const isOngoing = originalTask.status === TaskStatus.ONGOING;
         
-        if (index !== -1) {
-            // Create a new task to ensure data integrity
-            const updatedTask = new Task({
-                ...this._tasks[index].toObject(),
-                ...taskData
-            });
-            
-            this._tasks[index] = updatedTask;
-            this._saveTasks();
-            
-            // Update recurring schedule if needed
-            if (updatedTask.isRecurring) {
-                this._scheduleRecurringTask(updatedTask);
-            }
-            
-            return updatedTask;
+        // Determine what has changed
+        const changes = this._detectTaskChanges(originalTask, taskData);
+        
+        // Create a new task to ensure data integrity
+        const updatedTask = new Task({
+            ...originalTask.toObject(),
+            ...taskData
+        });
+        
+        // If the task is ongoing, handle special update cases
+        if (isOngoing) {
+            this._handleOngoingTaskUpdate(originalTask, updatedTask, changes);
         }
         
-        return null;
+        this._tasks[index] = updatedTask;
+        this._saveTasks();
+        
+        // Update recurring schedule if needed
+        if (updatedTask.isRecurring) {
+            this._scheduleRecurringTask(updatedTask);
+        }
+        
+        // If it's the active task, update it in the timer controller
+        if (window.app && window.app.timerController && 
+            window.app.timerController.activeTask && 
+            window.app.timerController.activeTask.id === taskId) {
+            window.app.timerController.handleTaskUpdate(updatedTask, changes);
+        }
+        
+        return updatedTask;
     }
+    
+    return null;
+}
+
 
     /**
      * Delete a task
@@ -398,6 +418,91 @@ export class TaskController {
         
         return higherPriorityTasks.length > 0 ? higherPriorityTasks[0] : null;
     }
+
+
+        
+    /**
+     * Detect what has changed between originalTask and taskData
+     * @private
+     */
+    _detectTaskChanges(originalTask, taskData) {
+        const changes = {
+            nameChanged: false,
+            durationChanged: false,
+            timerSettingsChanged: false,
+            otherFieldsChanged: false
+        };
+        
+        // Check if name changed
+        if (taskData.name && taskData.name !== originalTask.name) {
+            changes.nameChanged = true;
+        }
+        
+        // Check if estimated duration changed
+        if (taskData.estimatedDuration && taskData.estimatedDuration !== originalTask.estimatedDuration) {
+            changes.durationChanged = true;
+        }
+        
+        // Check if timer settings changed
+        if (taskData.timerSettings) {
+            const originalSettings = originalTask.timerSettings;
+            const newSettings = taskData.timerSettings;
+            
+            if (newSettings.focusDuration !== originalSettings.focusDuration ||
+                newSettings.breakDuration !== originalSettings.breakDuration ||
+                newSettings.useCustomTimer !== originalSettings.useCustomTimer) {
+                changes.timerSettingsChanged = true;
+            }
+        }
+        
+        // Check other fields for completeness
+        const keysToIgnore = ['name', 'estimatedDuration', 'timerSettings', 'id', 'createdAt', 'status', 'sessions', 'progress'];
+        for (const key in taskData) {
+            if (!keysToIgnore.includes(key) && JSON.stringify(taskData[key]) !== JSON.stringify(originalTask[key])) {
+                changes.otherFieldsChanged = true;
+                break;
+            }
+        }
+        
+        return changes;
+    }
+
+    /**
+     * Handle updating an ongoing task based on what changed
+     * @private
+     */
+    _handleOngoingTaskUpdate(originalTask, updatedTask, changes) {
+        // Preserve the current session progress
+        if (!changes.timerSettingsChanged) {
+            // If timer settings didn't change, preserve the current session
+            updatedTask.progress.currentSession = originalTask.progress.currentSession;
+            updatedTask.progress.completedSessions = originalTask.progress.completedSessions;
+            
+            // Keep the completed status of sessions
+            for (let i = 0; i < originalTask.progress.currentSession; i++) {
+                if (i < updatedTask.sessions.length && i < originalTask.sessions.length) {
+                    updatedTask.sessions[i].completed = originalTask.sessions[i].completed;
+                }
+            }
+            
+            // If the current session exists in both tasks, preserve its state
+            if (originalTask.progress.currentSession < originalTask.sessions.length &&
+                originalTask.progress.currentSession < updatedTask.sessions.length) {
+                updatedTask.sessions[originalTask.progress.currentSession].startedAt = 
+                    originalTask.sessions[originalTask.progress.currentSession].startedAt;
+            }
+        }
+        
+        // If duration changed but timer settings didn't, update the total sessions count
+        if (changes.durationChanged && !changes.timerSettingsChanged) {
+            const focusSessions = updatedTask.sessions.filter(s => s.type === SessionType.FOCUS);
+            updatedTask.progress.totalSessions = focusSessions.length;
+        }
+        
+        // Make sure to keep the ongoing status
+        updatedTask.status = TaskStatus.ONGOING;
+    }
+
 
     /**
      * Pause all ongoing tasks

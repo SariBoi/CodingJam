@@ -87,6 +87,12 @@ export class TimerController {
             task: document.getElementById('focus-timer-task'),
             exitBtn: document.getElementById('exit-focus-mode-btn')
         };
+
+        if (this.timerElements.pauseBtn) {
+            console.log('Pause button found:', this.timerElements.pauseBtn);
+        } else {
+            console.error('Pause button not found! Check the ID in HTML');
+        }
     }
 
     /**
@@ -109,12 +115,25 @@ export class TimerController {
             }
             
             if (this.timerElements.pauseBtn) {
-                this.timerElements.pauseBtn.addEventListener('click', () => {
-                    if (this.stateManager.isRunning()) {
-                        this.pauseTimer();
-                    }
-                });
-            }
+            // Remove any existing click handlers to avoid duplicates
+            const newPauseHandler = () => {
+                console.log('Pause button clicked');
+                
+                // Log the current state for debugging
+                console.log('Current timer state:', this.stateManager.getState());
+                
+                if (this.stateManager.isRunning()) {
+                    console.log('Calling pauseTimer method');
+                    this.pauseTimer();
+                } else {
+                    console.log('Timer not in running state, cannot pause');
+                }
+            };
+            
+            this.timerElements.pauseBtn.removeEventListener('click', this.pauseClickHandler);
+            this.pauseClickHandler = newPauseHandler;
+            this.timerElements.pauseBtn.addEventListener('click', this.pauseClickHandler);
+        }
             
             if (this.timerElements.endBtn) {
                 this.timerElements.endBtn.addEventListener('click', () => {
@@ -162,6 +181,8 @@ export class TimerController {
      * @param {string} stateType State change type from worker
      */
     handleWorkerStateChange(stateType) {
+        console.log('Worker state change:', stateType);
+        
         switch (stateType) {
             case 'paused':
                 this.stateManager.changeState('paused');
@@ -251,9 +272,14 @@ export class TimerController {
         // Update timer state
         this.stateManager.changeState('running');
         
-        // Update control buttons
+        // IMPORTANT: Immediately update the control buttons
         this.updateControlButtons();
         
+        console.log('Timer started, pause button state:', 
+                    this.timerElements.pauseBtn ? 
+                    'disabled=' + this.timerElements.pauseBtn.disabled : 
+                    'pauseBtn not found');
+            
         // If task has focus mode enabled, enter focus mode
         if (task.useFocusMode) {
             this.enterFocusMode();
@@ -274,6 +300,8 @@ export class TimerController {
      * Pause the timer
      */
     pauseTimer() {
+        console.log('TimerController.pauseTimer called, current state:', this.stateManager.getState());
+        
         if (this.stateManager.isRunning()) {
             // Pause the worker timer
             this.workerManager.pauseTimer();
@@ -292,6 +320,12 @@ export class TimerController {
             
             // Update control buttons
             this.updateControlButtons();
+            
+            console.log('Timer paused successfully, new state:', this.stateManager.getState());
+            return true;
+        } else {
+            console.log('Cannot pause: timer not running');
+            return false;
         }
     }
 
@@ -299,6 +333,8 @@ export class TimerController {
      * Resume the timer
      */
     resumeTimer() {
+        console.log('TimerController.resumeTimer called, current state:', this.stateManager.getState());
+        
         if (this.stateManager.isPaused()) {
             // Resume the worker timer
             this.workerManager.resumeTimer();
@@ -317,8 +353,15 @@ export class TimerController {
             
             // Update control buttons
             this.updateControlButtons();
+            
+            console.log('Timer resumed successfully, new state:', this.stateManager.getState());
+            return true;
+        } else {
+            console.log('Cannot resume: timer not paused');
+            return false;
         }
     }
+
 
     /**
      * Stop the timer
@@ -568,6 +611,42 @@ export class TimerController {
     }
 
     /**
+     * Add a new method to TimerController to handle task updates
+     * Add this to TimerController.js
+     */
+    handleTaskUpdate(updatedTask, changes) {
+        // Update the active task
+        this.sessionManager.setActiveTask(updatedTask);
+        
+        if (changes.nameChanged || changes.otherFieldsChanged) {
+            // Just update the display
+            this.updateTaskDisplay();
+        }
+        
+        if (changes.durationChanged && !changes.timerSettingsChanged) {
+            // Duration changed, but timer settings didn't
+            // Just update the session counter
+            this.updateSessionCounter();
+        }
+        
+        if (changes.timerSettingsChanged) {
+            // Timer settings changed, need to restart the current session
+            this.stopTimer();
+            
+            // Reset to the current session type with new duration
+            const currentSession = this.sessionManager.getCurrentSession();
+            if (currentSession) {
+                // Update the UI to match the new session
+                this.updateTimerContainerClass(currentSession.type);
+                
+                // Start the timer with the new session
+                this.startTimer();
+            }
+        }
+        
+    }
+
+    /**
      * Update the session counter
      */
     updateSessionCounter() {
@@ -592,32 +671,36 @@ export class TimerController {
      * Update the control buttons state
      */
     updateControlButtons() {
+    if (this.timerView) {
+        // Use TimerView to update the control buttons
+        const timerState = this.stateManager.getState();
+        const hasActiveTask = !!this.getActiveTask();
+        this.timerView.updateControlButtons(timerState, hasActiveTask);
+    } else if (this.timerElements.startBtn && this.timerElements.pauseBtn && this.timerElements.endBtn) {
         const timerState = this.stateManager.getState();
         const hasActiveTask = !!this.getActiveTask();
         
-        if (this.timerView) {
-            // Use TimerView to update the control buttons
-            this.timerView.updateControlButtons(timerState, hasActiveTask);
-        } else if (this.timerElements.startBtn && this.timerElements.pauseBtn && this.timerElements.endBtn) {
-            switch (timerState) {
-                case 'running':
-                    this.timerElements.startBtn.disabled = true;
-                    this.timerElements.pauseBtn.disabled = false;
-                    this.timerElements.endBtn.disabled = false;
-                    break;
-                case 'paused':
-                    this.timerElements.startBtn.disabled = false;
-                    this.timerElements.startBtn.textContent = 'Resume';
-                    this.timerElements.pauseBtn.disabled = true;
-                    this.timerElements.endBtn.disabled = false;
-                    break;
-                case 'stopped':
-                    this.timerElements.startBtn.disabled = !hasActiveTask;
-                    this.timerElements.startBtn.textContent = 'Start';
-                    this.timerElements.pauseBtn.disabled = true;
-                    this.timerElements.endBtn.disabled = true;
-                    break;
-            }
+        switch (timerState) {
+            case 'running':
+                this.timerElements.startBtn.disabled = true;
+                this.timerElements.pauseBtn.disabled = false; // IMPORTANT: Enable the pause button
+                this.timerElements.endBtn.disabled = false;
+                console.log('TimerView: Pause button enabled for running state');
+                break;
+            case 'paused':
+                this.timerElements.startBtn.disabled = false;
+                this.timerElements.startBtn.textContent = 'Resume';
+                this.timerElements.pauseBtn.disabled = true;
+                this.timerElements.endBtn.disabled = false;
+                console.log('TimerView: Pause button disabled for paused state');
+                break;
+            case 'stopped':
+                this.timerElements.startBtn.disabled = !hasActiveTask;
+                this.timerElements.startBtn.textContent = 'Start';
+                this.timerElements.pauseBtn.disabled = true;
+                this.timerElements.endBtn.disabled = true;
+                console.log('TimerView: Pause button disabled for stopped state');
+                break;
         }
         
         // Update focus mode button
@@ -625,7 +708,7 @@ export class TimerController {
             this.timerElements.focusModeBtn.disabled = timerState === 'stopped';
         }
     }
-
+}
     /**
      * Toggle focus mode
      */
