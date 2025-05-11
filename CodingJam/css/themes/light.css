@@ -1,0 +1,106 @@
+/* Light Theme */
+body {
+    background-color: var(--light-bg);
+    color: var(--light-text);
+}
+
+.sidebar {
+    background-color: var(--light-bg-secondary);
+    border-right-color: var(--light-border);
+}
+
+.sidebar-header {
+    border-bottom-color: var(--light-border);
+}
+
+.sidebar-tab {
+    color: var(--light-text);
+}
+
+.sidebar-tab.active {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.sidebar-tab:hover:not(.active) {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.task-item {
+    background-color: white;
+    border-color: var(--light-border);
+}
+
+.btn-icon {
+    color: var(--light-text);
+}
+
+.btn-icon:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.timer-container {
+    background-color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.timer-progress .progress {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.hour-marker {
+    border-bottom-color: var(--light-border);
+}
+
+.hour-label {
+    color: var(--light-text-secondary);
+}
+
+.day-headers {
+    border-bottom-color: var(--light-border);
+}
+
+.week-grid-cell {
+    border-color: var(--light-border);
+}
+
+.session-break {
+    background-color: var(--light-bg-secondary);
+    color: var(--light-text-secondary);
+    border-color: var(--light-border);
+}
+
+/* Override Bootstrap light mode styles */
+.form-control,
+.form-select {
+    background-color: white;
+    color: var(--light-text);
+    border-color: var(--light-border);
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: white;
+    color: var(--light-text);
+    border-color: var(--light-accent);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-check-input {
+    background-color: white;
+    border-color: var(--light-border);
+}
+
+.modal-content {
+    background-color: white;
+    color: var(--light-text);
+}
+
+.modal-header,
+.modal-footer {
+    border-color: var(--light-border);
+}
+
+/* Break state special styling */
+.break-state {
+    background-color: #f8f9fa !important;
+}

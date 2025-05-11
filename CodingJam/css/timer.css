@@ -1,0 +1,176 @@
+/* Timer Section Styles */
+.timer-section {
+    padding: 30px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.timer-container {
+    width: 100%;
+    max-width: 600px;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    text-align: center;
+    transition: all 0.5s ease;
+}
+
+.current-task-info {
+    margin-bottom: 20px;
+}
+
+#current-task-name {
+    font-size: 1.8rem;
+    margin-bottom: 5px;
+    transition: color 0.3s ease;
+}
+
+#current-task-status {
+    font-size: 1rem;
+    opacity: 0.8;
+    margin-bottom: 15px;
+}
+
+.timer-display {
+    margin-bottom: 30px;
+}
+
+.timer-type {
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.timer-clock {
+    font-size: 5rem;
+    font-weight: 700;
+    margin-bottom: 15px;
+    transition: color 0.3s ease;
+}
+
+.timer-progress {
+    margin-bottom: 10px;
+}
+
+.timer-progress .progress {
+    height: 8px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.timer-progress .progress-bar {
+    transition: width 1s linear;
+}
+
+.session-counter {
+    font-size: 0.9rem;
+    margin-top: 10px;
+    opacity: 0.8;
+}
+
+.timer-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+/* Focus Timer State */
+.timer-container.focus-state {
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+.timer-container.focus-state .timer-type {
+    color: #0d6efd;
+}
+
+.timer-container.focus-state .progress-bar {
+    background-color: #0d6efd;
+}
+
+/* Break Timer State */
+.timer-container.break-state {
+    background-color: rgba(25, 135, 84, 0.1);
+}
+
+.timer-container.break-state .timer-type {
+    color: #198754;
+}
+
+.timer-container.break-state .progress-bar {
+    background-color: #198754;
+}
+
+/* Paused Timer State */
+.timer-container.paused-state {
+    background-color: rgba(255, 193, 7, 0.1);
+}
+
+.timer-container.paused-state .timer-type {
+    color: #ffc107;
+}
+
+.timer-container.paused-state .progress-bar {
+    background-color: #ffc107;
+}
+
+/* Add this animation for when the timer is paused */
+@keyframes pulse-paused {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.timer-container.paused-state .timer-clock {
+    animation: pulse-paused 2s infinite;
+}
+
+/* Theme-specific timer styles */
+.light-theme .timer-container {
+    background-color: white;
+}
+
+.dark-theme .timer-container {
+    background-color: var(--dark-bg-secondary);
+}
+
+.light-theme .timer-progress .progress {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.dark-theme .timer-progress .progress {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Animation for theme transition */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+    100% { transform: scale(1); }
+}
+
+.pulse-animation {
+    animation: pulse 1s;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .timer-section {
+        padding: 20px 15px;
+    }
+    
+    .timer-container {
+        padding: 20px;
+    }
+    
+    .timer-clock {
+        font-size: 3.5rem;
+    }
+    
+    .timer-controls {
+        flex-direction: column;
+    }
+}
