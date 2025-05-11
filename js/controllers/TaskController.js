@@ -6,7 +6,7 @@
  */
 
 import { StorageManager } from '../services/StorageManager.js';
-import { Task, TaskStatus, TaskPriority } from '../models/Task.js';
+import { Task, TaskStatus, TaskPriority, SessionType } from '../models/Task.js';
 
 /**
  * TaskController class for managing tasks
@@ -18,6 +18,9 @@ export class TaskController {
         
         // Load tasks from storage
         this.loadTasks();
+
+        // Add to TaskController.js
+        this.pausedTaskStates = new Map(); // Store task ID -> time left mapping
     }
 
     /**
@@ -174,11 +177,26 @@ export class TaskController {
         // Determine what has changed
         const changes = this._detectTaskChanges(originalTask, taskData);
         
-        // Create a new task to ensure data integrity
-        const updatedTask = new Task({
+        // Create a copy of the taskData to modify
+        let updatedTaskData = {
             ...originalTask.toObject(),
             ...taskData
-        });
+        };
+        
+        // Keep track of completed sessions before recalculating
+        let completedSessions = originalTask.progress.completedSessions;
+        
+        // Force session recalculation if duration or timer settings changed
+        if (changes.durationChanged || changes.timerSettingsChanged) {
+            // Remove sessions to force recalculation
+            delete updatedTaskData.sessions;
+            
+            // Store the number of completed sessions to restore after recalculation
+            updatedTaskData._completedSessions = completedSessions;
+        }
+        
+        // Create a new task to ensure data integrity
+        const updatedTask = new Task(updatedTaskData);
         
         // If the task is ongoing, handle special update cases
         if (isOngoing) {
@@ -250,17 +268,32 @@ export class TaskController {
      * @param {string} taskId Task ID
      * @returns {Task|null} Updated Task object or null if not found
      */
+    // When pausing a task
     pauseTask(taskId) {
         const task = this.getTaskById(taskId);
-        
         if (task && task.status === TaskStatus.ONGOING) {
+            // Store current time left
+            this.pausedTaskStates.set(taskId, {
+                timeLeft: currentTimeLeft,
+                sessionIndex: task.progress.currentSession
+            });
             task.pause();
             this._saveTasks();
             return task;
         }
-        
         return null;
     }
+
+    storePausedTaskState(taskId, timeLeft, sessionIndex) {
+    console.log(`Storing paused state for task ${taskId}: ${timeLeft} seconds left, session ${sessionIndex}`);
+        
+        // Store the paused state
+        this.pausedTaskStates.set(taskId, {
+            timeLeft: timeLeft,
+            sessionIndex: sessionIndex
+        });
+    }
+
 
     /**
      * Complete the current session of a task
@@ -305,7 +338,32 @@ export class TaskController {
         const task = this.getTaskById(taskId);
         
         if (task && task.status === TaskStatus.COMPLETED) {
-            task.status = TaskStatus.PENDING;
+            if (task.endedEarly) {
+                // This task was ended early via the "End Task" button
+                // Restore it to PARTIAL status (paused) with its progress preserved
+                task.status = TaskStatus.PARTIAL;
+                
+                // Clear the endedEarly flag
+                delete task.endedEarly;
+                
+                // We don't reset progress because we want to maintain where they left off
+            } else {
+                // This task was completed naturally (all sessions finished)
+                // Reset it to PENDING with all progress cleared
+                task.status = TaskStatus.PENDING;
+                
+                // Reset progress
+                task.progress.completedSessions = 0;
+                task.progress.currentSession = 0;
+                task.progress.timeSpent = 0;
+                
+                // Reset session completion status
+                task.sessions.forEach(session => {
+                    session.completed = false;
+                    delete session.startedAt;
+                });
+            }
+            
             this._saveTasks();
             return task;
         }
@@ -472,17 +530,63 @@ export class TaskController {
      * @private
      */
     _handleOngoingTaskUpdate(originalTask, updatedTask, changes) {
-        // Preserve the current session progress
-        if (!changes.timerSettingsChanged) {
-            // If timer settings didn't change, preserve the current session
+        // If duration changed or timer settings changed, we need to handle session count correctly
+        if (changes.durationChanged || changes.timerSettingsChanged) {
+            // Get the new total sessions count (only focus sessions count for progress)
+            const focusSessions = updatedTask.sessions.filter(s => s.type === SessionType.FOCUS);
+            updatedTask.progress.totalSessions = focusSessions.length;
+            
+            // Retrieve the original completed sessions
+            const originalCompletedSessions = updatedTask._completedSessions !== undefined ? 
+                updatedTask._completedSessions : originalTask.progress.completedSessions;
+                
+            // Keep the ABSOLUTE number of completed sessions the same (not the ratio)
+            // But ensure we don't exceed the new total
+            updatedTask.progress.completedSessions = Math.min(
+                originalCompletedSessions,
+                updatedTask.progress.totalSessions
+            );
+            
+            // Mark appropriate sessions as completed
+            let completedFocusSessions = 0;
+            for (let i = 0; i < updatedTask.sessions.length; i++) {
+                const session = updatedTask.sessions[i];
+                if (session.type === SessionType.FOCUS) {
+                    if (completedFocusSessions < updatedTask.progress.completedSessions) {
+                        session.completed = true;
+                        completedFocusSessions++;
+                    } else {
+                        session.completed = false;
+                    }
+                } else if (i > 0 && updatedTask.sessions[i-1].completed) {
+                    // Mark break sessions as completed if previous focus session is completed
+                    session.completed = true;
+                } else {
+                    session.completed = false;
+                }
+            }
+            
+            // Set current session to the first uncompleted session
+            updatedTask.progress.currentSession = 0;
+            for (let i = 0; i < updatedTask.sessions.length; i++) {
+                if (!updatedTask.sessions[i].completed) {
+                    updatedTask.progress.currentSession = i;
+                    break;
+                }
+            }
+            
+            // Clean up temporary property
+            if (updatedTask._completedSessions !== undefined) {
+                delete updatedTask._completedSessions;
+            }
+        } else {
+            // If no duration or timer settings changes, just preserve the current session
             updatedTask.progress.currentSession = originalTask.progress.currentSession;
             updatedTask.progress.completedSessions = originalTask.progress.completedSessions;
             
             // Keep the completed status of sessions
-            for (let i = 0; i < originalTask.progress.currentSession; i++) {
-                if (i < updatedTask.sessions.length && i < originalTask.sessions.length) {
-                    updatedTask.sessions[i].completed = originalTask.sessions[i].completed;
-                }
+            for (let i = 0; i < Math.min(updatedTask.sessions.length, originalTask.sessions.length); i++) {
+                updatedTask.sessions[i].completed = originalTask.sessions[i].completed;
             }
             
             // If the current session exists in both tasks, preserve its state
@@ -491,12 +595,6 @@ export class TaskController {
                 updatedTask.sessions[originalTask.progress.currentSession].startedAt = 
                     originalTask.sessions[originalTask.progress.currentSession].startedAt;
             }
-        }
-        
-        // If duration changed but timer settings didn't, update the total sessions count
-        if (changes.durationChanged && !changes.timerSettingsChanged) {
-            const focusSessions = updatedTask.sessions.filter(s => s.type === SessionType.FOCUS);
-            updatedTask.progress.totalSessions = focusSessions.length;
         }
         
         // Make sure to keep the ongoing status

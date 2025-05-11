@@ -205,26 +205,51 @@ export class TimerController {
      * @param {boolean} autoConfirm Whether to automatically confirm switching tasks
      * @returns {boolean} Success flag
      */
-    setActiveTask(task, autoConfirm = true) {
+
+    // In TimerController.js, update the setActiveTask method:
+    async setActiveTask(task, autoConfirm = true) {
         // If a task is already active and different from the new one, confirm switch
-        if (this.getActiveTask() && this.getActiveTask().id !== task.id && !this.stateManager.isStopped()) {
+        const currentTask = this.getActiveTask();
+        if (currentTask && currentTask.id !== task.id && !this.stateManager.isStopped()) {
             if (!autoConfirm && !confirm('Another task is currently in progress. Switch to the new task?')) {
                 return false;
             }
             
-            // Pause the current timer if it's running
+            // If the current task is running, pause it before switching
             if (this.stateManager.isRunning()) {
-                this.pauseTimer();
+                await this.pauseTimer(); // Wait for pause to complete
             }
         }
         
-        // Set the new active task
-        this.sessionManager.setActiveTask(task);
+        // Stop the current timer
+        this.stopTimer();
+        
+        // Set the new active task - but ensure we're using a fresh copy
+        // This is critical to prevent session state mixups
+        const freshTask = this.taskController.getTaskById(task.id);
+        this.sessionManager.setActiveTask(freshTask);
+        
+        // Check if this task was previously paused and has a saved state
+        const pausedState = this.taskController.pausedTaskStates.get(freshTask.id);
+        
+        console.log('Paused state for task', freshTask.id, ':', pausedState);
+        
+        if (pausedState && pausedState.sessionIndex === freshTask.progress.currentSession) {
+            // Restore the paused state
+            // Update UI to show the time left from the paused state
+            console.log(`Restoring paused state: ${pausedState.timeLeft} seconds left`);
+            this.updateTimerDisplay(pausedState.timeLeft, 
+                (pausedState.timeLeft / (freshTask.getCurrentSession().duration * 60)) * 100);
+        } else {
+            // Initialize with the new session's full duration
+            const session = freshTask.getCurrentSession();
+            if (session) {
+                this.updateTimerDisplay(session.duration * 60, 100);
+            }
+        }
         
         // Update the timer UI
         this.updateTaskDisplay();
-        
-        // Update control buttons
         this.updateControlButtons();
         
         return true;
@@ -260,26 +285,38 @@ export class TimerController {
         // Start the task in the session manager
         this.sessionManager.startTask();
         
-        // Get session duration in seconds
-        const durationSeconds = session.duration * 60;
+        // Check if there's a saved paused state for this task
+        const pausedState = this.taskController.pausedTaskStates.get(task.id);
+        let durationSeconds;
+        
+        if (pausedState && pausedState.sessionIndex === task.progress.currentSession) {
+            // Use the saved time left
+            durationSeconds = pausedState.timeLeft;
+            console.log(`Using saved paused time: ${durationSeconds} seconds`);
+            
+            // Only delete the paused state when we actually start the timer
+            this.taskController.pausedTaskStates.delete(task.id);
+        } else {
+            // Use the full session duration
+            durationSeconds = session.duration * 60;
+            console.log(`Using full session duration: ${durationSeconds} seconds`);
+        }
         
         // Set timer container class based on session type
         this.updateTimerContainerClass(session.type);
         
-        // Start the worker timer
+        // Start the worker timer with appropriate duration
         this.workerManager.startTimer(durationSeconds);
         
         // Update timer state
         this.stateManager.changeState('running');
         
-        // IMPORTANT: Immediately update the control buttons
+        // Update control buttons
         this.updateControlButtons();
         
-        console.log('Timer started, pause button state:', 
-                    this.timerElements.pauseBtn ? 
-                    'disabled=' + this.timerElements.pauseBtn.disabled : 
-                    'pauseBtn not found');
-            
+        // Update task status to show "In progress"
+        this.updateTaskDisplay();
+        
         // If task has focus mode enabled, enter focus mode
         if (task.useFocusMode) {
             this.enterFocusMode();
@@ -296,71 +333,123 @@ export class TimerController {
         }
     }
 
+
     /**
      * Pause the timer
      */
     pauseTimer() {
-        console.log('TimerController.pauseTimer called, current state:', this.stateManager.getState());
-        
-        if (this.stateManager.isRunning()) {
-            // Pause the worker timer
-            this.workerManager.pauseTimer();
+    console.log('TimerController.pauseTimer called, current state:', this.stateManager.getState());
+    
+    if (this.stateManager.isRunning()) {
+        // Return a Promise that resolves when time left is saved
+        return new Promise(resolve => {
+            // Get the current time left before pausing
+            this.workerManager.getTimeLeft();
             
-            // Update timer state
-            this.stateManager.changeState('paused');
+            // Listen for the time left response before proceeding
+            const timeLeftHandler = (e) => {
+                if (e.data.type === 'timeLeft') {
+                    // Remove the event listener
+                    this.workerManager.worker.removeEventListener('message', timeLeftHandler);
+                    
+                    // Store the time left in the task controller
+                    const timeLeft = e.data.timeLeft;
+                    if (this.activeTask) {
+                        this.taskController.storePausedTaskState(this.activeTask.id, timeLeft, this.activeTask.progress.currentSession);
+                    }
+                    
+                    // Complete all the rest of pause operations
+                    this.workerManager.pauseTimer();
+                    this.stateManager.changeState('paused');
+                    this.sessionManager.pauseTask();
+                    
+                    // Update UI
+                    const session = this.sessionManager.getCurrentSession();
+                    if (session) {
+                        this.updateTimerContainerClass(session.type, true);
+                    }
+                    this.updateControlButtons();
+                    
+                    // Update task status to show "Paused"
+                    this.updateTaskDisplay();
+                    
+                    console.log('Timer paused successfully, new state:', this.stateManager.getState());
+                    
+                    // Resolve the promise to indicate the pause operation is complete
+                    resolve(true);
+                }
+            };
             
-            // Pause the task in the session manager
-            this.sessionManager.pauseTask();
+            // Add the temporary event listener
+            this.workerManager.worker.addEventListener('message', timeLeftHandler);
             
-            // Update timer container class for paused state
-            const session = this.sessionManager.getCurrentSession();
-            if (session) {
-                this.updateTimerContainerClass(session.type, true);
-            }
-            
-            // Update control buttons
-            this.updateControlButtons();
-            
-            console.log('Timer paused successfully, new state:', this.stateManager.getState());
-            return true;
-        } else {
-            console.log('Cannot pause: timer not running');
-            return false;
-        }
+            // Request the current time left
+            this.workerManager.getTimeLeft();
+        });
+    } else {
+        console.log('Cannot pause: timer not running');
+        return Promise.resolve(false);
     }
+}
 
     /**
      * Resume the timer
      */
     resumeTimer() {
-        console.log('TimerController.resumeTimer called, current state:', this.stateManager.getState());
-        
-        if (this.stateManager.isPaused()) {
-            // Resume the worker timer
-            this.workerManager.resumeTimer();
-            
-            // Update timer state
-            this.stateManager.changeState('running');
-            
-            // Resume the task in the session manager
-            this.sessionManager.startTask();
-            
-            // Update timer container class to remove paused state
-            const session = this.sessionManager.getCurrentSession();
-            if (session) {
-                this.updateTimerContainerClass(session.type, false);
-            }
-            
-            // Update control buttons
-            this.updateControlButtons();
-            
-            console.log('Timer resumed successfully, new state:', this.stateManager.getState());
-            return true;
-        } else {
-            console.log('Cannot resume: timer not paused');
+    console.log('TimerController.resumeTimer called, current state:', this.stateManager.getState());
+    
+    if (this.stateManager.isPaused()) {
+        // Get the active task and its paused state
+        const task = this.getActiveTask();
+        if (!task) {
+            console.error('No active task found when trying to resume timer');
             return false;
         }
+        
+        // If there's a saved paused state, use it (should already be loaded in the UI)
+        const pausedState = this.taskController.pausedTaskStates.get(task.id);
+        let durationSeconds;
+        
+        if (pausedState && pausedState.sessionIndex === task.progress.currentSession) {
+            // Use the saved time left
+            durationSeconds = pausedState.timeLeft;
+            console.log(`Resuming with saved time: ${durationSeconds} seconds`);
+            
+            // Start the timer with this duration
+            this.workerManager.startTimer(durationSeconds);
+            
+            // Clear the paused state since we're resuming it
+            this.taskController.pausedTaskStates.delete(task.id);
+        } else {
+            // Fallback to regular resume if no paused state is found
+            this.workerManager.resumeTimer();
+        }
+        
+        // Update timer state
+        this.stateManager.changeState('running');
+        
+        // Resume the task in the session manager
+        this.sessionManager.startTask();
+        
+        // Update timer container class to remove paused state
+        const session = this.sessionManager.getCurrentSession();
+        if (session) {
+            this.updateTimerContainerClass(session.type, false);
+        }
+        
+        // Update control buttons
+        this.updateControlButtons();
+        
+        // Update task status to show "In progress"
+        this.updateTaskDisplay();
+        
+        console.log('Timer resumed successfully, new state:', this.stateManager.getState());
+        return true;
+    } else {
+        console.log('Cannot resume: timer not paused');
+        return false;
     }
+}
 
 
     /**
@@ -393,9 +482,15 @@ export class TimerController {
             return;
         }
         
+        // Get task ID before ending it
+        const taskId = this.getActiveTask().id;
+        
         // End the task in the session manager
         const endedTask = this.sessionManager.getActiveTask(); // Save reference for notification
         this.sessionManager.endTask();
+        
+        // Clear any paused state for this task
+        this.taskController.pausedTaskStates.delete(taskId);
         
         // Stop the timer
         this.stopTimer();
@@ -405,6 +500,31 @@ export class TimerController {
         
         // Show notification
         this.notificationManager.showTaskCompletedNotification(endedTask);
+        
+        // IMPROVEMENT 1: Refresh the task lists immediately
+        if (this.app && this.app.taskView) {
+            this.app.taskView.refreshTaskLists();
+        }
+        
+        // IMPROVEMENT 2: Auto-select next task
+        if (this.app && this.app.taskController) {
+            // Get all pending/active tasks that could be selected next
+            const pendingTasks = this.app.taskController.getPendingTasks();
+            const activeAndPartialTasks = this.app.taskController.getActiveAndPartialTasks();
+            const availableTasks = [...activeAndPartialTasks, ...pendingTasks];
+            
+            if (availableTasks.length > 0) {
+                // Select the first available task
+                if (this.app.selectTask) {
+                    this.app.selectTask(availableTasks[0].id);
+                }
+            }
+        }
+        
+        // Refresh the calendar if available
+        if (this.app && this.app.calendarController) {
+            this.app.calendarController.refreshCalendar();
+        }
     }
 
     /**
@@ -420,6 +540,9 @@ export class TimerController {
             return;
         }
         
+        // Clear any paused state for this task since we're completing the session
+        this.taskController.pausedTaskStates.delete(task.id);
+        
         // Play sound based on session type
         if (session.type === SessionType.FOCUS) {
             this.sounds.focusEnd.play();
@@ -431,7 +554,7 @@ export class TimerController {
         if (session.type === SessionType.FOCUS) {
             this.notificationManager.showFocusEndNotification(
                 task,
-                task.progress.completedSessions
+                task.progress.completedSessions + 1 // Add 1 since we're about to complete this session
             );
         } else {
             this.notificationManager.showBreakEndNotification(task);
@@ -439,6 +562,9 @@ export class TimerController {
         
         // Complete the current session
         const nextSession = this.sessionManager.completeCurrentSession();
+        
+        // IMPROVEMENT 4: Force refresh of the session counter display
+        this.updateSessionCounter();
         
         // Refresh the task list to update progress
         if (this.app && this.app.taskView) {
@@ -625,13 +751,40 @@ export class TimerController {
         
         if (changes.durationChanged && !changes.timerSettingsChanged) {
             // Duration changed, but timer settings didn't
-            // Just update the session counter
+            // Update the session counter and task display
             this.updateSessionCounter();
+            this.updateTaskDisplay();
+            
+            // If there's a timer running, we need to update it with the new session duration
+            if (this.stateManager.isRunning()) {
+                const currentSession = this.sessionManager.getCurrentSession();
+                if (currentSession) {
+                    // We need to preserve the time left ratio
+                    this.workerManager.getTimeLeft();
+                    
+                    // The worker will return the current time left, and we'll update in the next tick
+                    const timeLeftHandler = (e) => {
+                        if (e.data.type === 'timeLeft') {
+                            this.workerManager.worker.removeEventListener('message', timeLeftHandler);
+                            
+                            // Restart the timer with the new duration
+                            this.stopTimer();
+                            this.startTimer();
+                        }
+                    };
+                    
+                    this.workerManager.worker.addEventListener('message', timeLeftHandler);
+                }
+            }
         }
         
         if (changes.timerSettingsChanged) {
             // Timer settings changed, need to restart the current session
             this.stopTimer();
+            
+            // Update the task display and session counter
+            this.updateTaskDisplay();
+            this.updateSessionCounter();
             
             // Reset to the current session type with new duration
             const currentSession = this.sessionManager.getCurrentSession();
@@ -643,7 +796,6 @@ export class TimerController {
                 this.startTimer();
             }
         }
-        
     }
 
     /**
@@ -713,9 +865,22 @@ export class TimerController {
      * Toggle focus mode
      */
     toggleFocusMode() {
+        console.log('Toggle focus mode called'); // Add debugging
+        
         if (this.focusModeManager.isFocusModeActive()) {
             this.exitFocusMode();
         } else {
+            // Make sure we have the current task and session
+            const task = this.getActiveTask();
+            const session = this.sessionManager.getCurrentSession();
+            
+            // Only proceed if we have a task
+            if (!task) {
+                console.warn('No active task for focus mode');
+                alert('Please select a task before entering focus mode.');
+                return;
+            }
+            
             this.enterFocusMode();
         }
     }
@@ -731,15 +896,17 @@ export class TimerController {
             this.taskController.updateTask(task.id, task);
         }
         
-        // Get current time from worker
-        this.workerManager.getTimeLeft();
+        // Get current session
+        const session = this.sessionManager.getCurrentSession();
         
-        // Delegate to focus mode manager
+        // Make sure we're passing the correct elements object to the focus mode manager
         this.focusModeManager.enterFocusMode(
             task,
-            this.sessionManager.getCurrentSession(),
-            this.focusModeElements
+            session,
+            this.focusModeElements // Make sure this is the correct object name
         );
+        
+        console.log('Focus mode activated'); // Add debugging
     }
 
     /**

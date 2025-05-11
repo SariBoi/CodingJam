@@ -47,6 +47,7 @@ export class FocusModeManager {
         this.requestFullScreen();
     }
 
+
     /**
      * Exit focus mode
      */

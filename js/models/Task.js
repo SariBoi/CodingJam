@@ -109,7 +109,8 @@ export class Task {
         const { focusDuration, breakDuration } = this.timerSettings;
         const estimatedMinutes = this.estimatedDuration * 60;
         
-        // Calculate number of complete Pomodoro cycles (focus + break)
+        // Calculate number of complete Pomodoro cycles needed
+        // Math.ceil ensures we round up to fully cover the estimated duration
         const focusSessionCount = Math.ceil(estimatedMinutes / focusDuration);
         const sessions = [];
         
@@ -143,6 +144,11 @@ export class Task {
                 });
             }
         }
+        
+        // Log the session calculation for debugging
+        console.log(`Calculated ${focusSessionCount} focus sessions for a ${this.estimatedDuration} hour task`);
+        console.log(`Total focus time: ${focusSessionCount * focusDuration} minutes`);
+        console.log(`Required time: ${estimatedMinutes} minutes`);
         
         return sessions;
     }
@@ -336,7 +342,9 @@ export class Task {
             useFocusMode: this.useFocusMode,
             sessions: this.sessions,
             progress: this.progress,
-            tags: this.tags
+            tags: this.tags,
+            endedEarly: this.endedEarly || false, // Include the endedEarly flag
+            endProgress: this.endProgress // Include the progress at ending time if available
         };
     }
 

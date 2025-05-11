@@ -22,8 +22,72 @@ export class TaskFormManager {
     /**
      * Initialize event listeners for task form elements
      */
+    // Modified initTaskFormListeners method with more reliable event binding
     initTaskFormListeners() {
-        // All timer preset radio buttons
+        console.log('Setting up task form event listeners');
+        
+        // Custom duration toggle for focus time
+        const focusDurationSelect = document.getElementById('default-focus-time');
+        if (focusDurationSelect) {
+            focusDurationSelect.addEventListener('change', () => {
+                if (focusDurationSelect.value === 'custom') {
+                    this.showCustomDurationField('focus');
+                } else {
+                    this.hideCustomDurationField('focus');
+                }
+            });
+        }
+        
+        // Custom duration toggle for break time
+        const breakDurationSelect = document.getElementById('default-break-time');
+        if (breakDurationSelect) {
+            breakDurationSelect.addEventListener('change', () => {
+                if (breakDurationSelect.value === 'custom') {
+                    this.showCustomDurationField('break');
+                } else {
+                    this.hideCustomDurationField('break');
+                }
+            });
+        }
+        
+        // Custom reminder time toggle
+        const reminderTimeSelect = document.getElementById('default-reminder-time');
+        if (reminderTimeSelect) {
+            reminderTimeSelect.addEventListener('change', () => {
+                if (reminderTimeSelect.value === 'custom') {
+                    this.showCustomReminderField();
+                } else {
+                    this.hideCustomReminderField();
+                }
+            });
+        }
+        
+        // Save task button - directly attach the handler in a more reliable way
+        const saveTaskBtn = document.getElementById('save-task-btn');
+        if (saveTaskBtn) {
+            console.log('Found save task button, attaching click handler');
+            
+            // Remove any existing click handlers to avoid duplicates
+            saveTaskBtn.removeEventListener('click', this.saveTaskHandler);
+            
+            // Create a bound handler function and store it
+            this.saveTaskHandler = this.saveTask.bind(this);
+            
+            // Add the new handler
+            saveTaskBtn.addEventListener('click', this.saveTaskHandler);
+        } else {
+            console.warn('Save task button not found in the DOM');
+        }
+        
+        // Add task button
+        const addTaskBtn = document.getElementById('add-task-btn');
+        if (addTaskBtn) {
+            addTaskBtn.addEventListener('click', () => {
+                this.showTaskModal();
+            });
+        }
+        
+        // Timer preset radio buttons
         const timerPresetRadios = document.querySelectorAll('input[name="timer-preset"]');
         if (timerPresetRadios.length > 0) {
             timerPresetRadios.forEach(radio => {
@@ -44,21 +108,7 @@ export class TaskFormManager {
             });
         }
         
-        // Save task button
-        const saveTaskBtn = document.getElementById('save-task-btn');
-        if (saveTaskBtn) {
-            saveTaskBtn.addEventListener('click', () => {
-                this.saveTask();
-            });
-        }
-        
-        // Add task button
-        const addTaskBtn = document.getElementById('add-task-btn');
-        if (addTaskBtn) {
-            addTaskBtn.addEventListener('click', () => {
-                this.showTaskModal();
-            });
-        }
+        console.log('Task form event listeners setup complete');
     }
 
     /**
@@ -214,6 +264,7 @@ export class TaskFormManager {
         
         // Fill the form with task data if editing
         if (taskData) {
+            // Set form fields with task data
             document.getElementById('task-id').value = taskData.id;
             document.getElementById('task-name').value = taskData.name;
             
@@ -243,6 +294,7 @@ export class TaskFormManager {
             
             document.getElementById('task-priority').value = taskData.priority;
             
+            // Set timer settings
             if (taskData.timerSettings?.useCustomTimer) {
                 document.getElementById('timer-custom').checked = true;
                 document.getElementById('custom-timer-inputs').style.display = 'block';
@@ -250,16 +302,22 @@ export class TaskFormManager {
                 document.getElementById('custom-break-time').value = taskData.timerSettings.breakDuration;
             } else {
                 // Set preset radio button based on timer settings
-                const presetMap = {
-                    '25-5': 'default',
-                    '15-3': 'short',
-                    '50-10': 'long'
-                };
+                const focusDuration = taskData.timerSettings.focusDuration;
+                const breakDuration = taskData.timerSettings.breakDuration;
                 
-                const presetKey = `${taskData.timerSettings.focusDuration}-${taskData.timerSettings.breakDuration}`;
-                const preset = presetMap[presetKey] || 'default';
-                
-                document.getElementById(`timer-${preset}`).checked = true;
+                if (focusDuration === 25 && breakDuration === 5) {
+                    document.getElementById('timer-default').checked = true;
+                } else if (focusDuration === 15 && breakDuration === 3) {
+                    document.getElementById('timer-short').checked = true;
+                } else if (focusDuration === 50 && breakDuration === 10) {
+                    document.getElementById('timer-long').checked = true;
+                } else {
+                    // Use custom timer preset for any non-standard settings
+                    document.getElementById('timer-custom').checked = true;
+                    document.getElementById('custom-timer-inputs').style.display = 'block';
+                    document.getElementById('custom-focus-time').value = focusDuration;
+                    document.getElementById('custom-break-time').value = breakDuration;
+                }
             }
             
             document.getElementById('procrastination-mode').checked = taskData.procrastinationMode;
@@ -269,9 +327,12 @@ export class TaskFormManager {
                 document.getElementById('recurring-options').style.display = 'block';
                 
                 // Check the appropriate day checkboxes
-                taskData.recurringDays.forEach(day => {
-                    document.getElementById(`day-${day}`).checked = true;
-                });
+                if (taskData.recurringDays && taskData.recurringDays.length > 0) {
+                    taskData.recurringDays.forEach(day => {
+                        const checkbox = document.getElementById(`day-${day}`);
+                        if (checkbox) checkbox.checked = true;
+                    });
+                }
             }
             
             // Set reminder value
@@ -280,16 +341,12 @@ export class TaskFormManager {
                 reminderSelect.value = 'none';
             } else if (taskData.reminderTime === this.app.settings.defaultReminderTime) {
                 reminderSelect.value = 'default';
+            } else if ([15, 30, 60, 120].includes(taskData.reminderTime)) {
+                // Find the option that matches the reminder time
+                reminderSelect.value = taskData.reminderTime.toString();
             } else {
-                // Find the closest option
-                const options = [15, 30, 60, 120];
-                const closest = options.find(op => op === taskData.reminderTime);
-                
-                if (closest) {
-                    reminderSelect.value = closest.toString();
-                } else {
-                    reminderSelect.value = 'default';
-                }
+                // Default to "default" if no match
+                reminderSelect.value = 'default';
             }
         }
         
@@ -309,138 +366,164 @@ export class TaskFormManager {
     /**
      * Save a task from the modal form
      */
+    // Modified saveTask method with better debugging and error handling
     saveTask() {
-        // Get common form values
-        const taskId = document.getElementById('task-id').value;
-        const name = document.getElementById('task-name').value.trim();
-        const dueDate = document.getElementById('task-due-date').value;
-        const dueTime = document.getElementById('task-due-time').value;
-        const startDate = document.getElementById('task-start-date').value;
-        const startTime = document.getElementById('task-start-time').value;
+        console.log('Save Task button clicked');
+        
+        try {
+            // Get common form values
+            const taskId = document.getElementById('task-id').value;
+            console.log('Task ID:', taskId);
+            
+            const name = document.getElementById('task-name').value.trim();
+            const dueDate = document.getElementById('task-due-date').value;
+            const dueTime = document.getElementById('task-due-time').value;
+            const startDate = document.getElementById('task-start-date').value;
+            const startTime = document.getElementById('task-start-time').value;
 
-        const durationHours = parseFloat(document.getElementById('task-duration-hours').value) || 0;
-        const durationMinutes = parseFloat(document.getElementById('task-duration-minutes').value) || 0;
-        const estimatedDuration = durationHours + (durationMinutes / 60); // Convert to hours
+            const durationHours = parseFloat(document.getElementById('task-duration-hours').value) || 0;
+            const durationMinutes = parseFloat(document.getElementById('task-duration-minutes').value) || 0;
+            const estimatedDuration = durationHours + (durationMinutes / 60); // Convert to hours
 
-        const priority = document.getElementById('task-priority').value;
+            const priority = document.getElementById('task-priority').value;
 
-        // --- VALIDATIONS ---
-        if (!name) {
-            alert('Task name is required.');
-            return;
-        }
-        if (estimatedDuration <= 0) {
-            alert('Please enter a valid estimated duration (at least 1 minute).');
-            return;
-        }
-
-        // Get timer settings
-        const timerPreset = document.querySelector('input[name="timer-preset"]:checked').value;
-        let focusDuration, breakDuration, useCustomTimer;
-
-        if (timerPreset === 'custom') {
-            useCustomTimer = true;
-            focusDuration = parseInt(document.getElementById('custom-focus-time').value);
-            breakDuration = parseInt(document.getElementById('custom-break-time').value);
-
-            if (isNaN(focusDuration) || focusDuration <= 0 || isNaN(breakDuration) || breakDuration <= 0) {
-                alert('Please enter valid custom focus and break durations (must be greater than 0).');
+            // --- VALIDATIONS ---
+            if (!name) {
+                alert('Task name is required.');
                 return;
             }
-        } else {
-            useCustomTimer = false;
-            switch (timerPreset) {
-                case 'short':
-                    focusDuration = 15; breakDuration = 3; break;
-                case 'long':
-                    focusDuration = 50; breakDuration = 10; break;
-                default: // 'default'
-                    focusDuration = 25; breakDuration = 5; break;
+            if (estimatedDuration <= 0) {
+                alert('Please enter a valid estimated duration (at least 1 minute).');
+                return;
             }
-        }
 
-        // Get reminder setting
-        const reminderValue = document.getElementById('task-reminder').value;
-        let reminderTime;
-        if (reminderValue === 'none') {
-            reminderTime = null;
-        } else if (reminderValue === 'default') {
-            reminderTime = this.app.settings.defaultReminderTime;
-        } else {
-            reminderTime = parseInt(reminderValue);
-        }
+            // Get timer settings
+            const timerPreset = document.querySelector('input[name="timer-preset"]:checked').value;
+            let focusDuration, breakDuration, useCustomTimer;
 
-        const procrastinationMode = document.getElementById('procrastination-mode').checked;
-        const isRecurring = document.getElementById('task-recurring').checked;
-        const recurringDays = [];
-        if (isRecurring) {
-            for (let i = 0; i < 7; i++) {
-                if (document.getElementById(`day-${i}`).checked) {
-                    recurringDays.push(i);
+            if (timerPreset === 'custom') {
+                useCustomTimer = true;
+                focusDuration = parseInt(document.getElementById('custom-focus-time').value);
+                breakDuration = parseInt(document.getElementById('custom-break-time').value);
+
+                if (isNaN(focusDuration) || focusDuration <= 0 || isNaN(breakDuration) || breakDuration <= 0) {
+                    alert('Please enter valid custom focus and break durations (must be greater than 0).');
+                    return;
+                }
+            } else {
+                useCustomTimer = false;
+                switch (timerPreset) {
+                    case 'short':
+                        focusDuration = 15; breakDuration = 3; break;
+                    case 'long':
+                        focusDuration = 50; breakDuration = 10; break;
+                    default: // 'default'
+                        focusDuration = 25; breakDuration = 5; break;
                 }
             }
-            if (recurringDays.length === 0) {
-                alert('Please select at least one day for recurring tasks.');
-                return;
+
+            // Get reminder setting
+            const reminderValue = document.getElementById('task-reminder').value;
+            let reminderTime;
+            if (reminderValue === 'none') {
+                reminderTime = null;
+            } else if (reminderValue === 'default') {
+                reminderTime = this.app.settings.defaultReminderTime;
+            } else {
+                reminderTime = parseInt(reminderValue);
             }
-        }
 
-        // --- Construct taskData object NOW ---
-        const taskData = {
-            name,
-            dueDate: dueDate || null,
-            dueTime: dueTime || null,
-            startDate: startDate || null,
-            startTime: startTime || null,
-            estimatedDuration: estimatedDuration, // Use the calculated decimal hour value
-            priority,
-            timerSettings: {
-                focusDuration,
-                breakDuration,
-                useCustomTimer
-            },
-            reminderTime,
-            procrastinationMode,
-            isRecurring,
-            recurringDays
-            // Note: status, progress, sessions, etc., are handled by TaskController or Task model
-        };
-
-        // --- Handle Task Creation or Update ---
-        if (taskId) {
-            // Editing an existing task
-            const originalTask = this.app.taskController.getTaskById(taskId);
-
-            if (originalTask && originalTask.status === 'ongoing') {
-                const originalTimerSettings = originalTask.timerSettings;
-                const newTimerSettings = taskData.timerSettings;
-
-                if (newTimerSettings.focusDuration !== originalTimerSettings.focusDuration ||
-                    newTimerSettings.breakDuration !== originalTimerSettings.breakDuration) {
-                    if (!confirm('Changing focus or break times for an ongoing task will restart the current timer session with the new durations. Continue?')) {
-                        return; // User cancelled
+            const procrastinationMode = document.getElementById('procrastination-mode').checked;
+            const isRecurring = document.getElementById('task-recurring').checked;
+            const recurringDays = [];
+            if (isRecurring) {
+                for (let i = 0; i < 7; i++) {
+                    if (document.getElementById(`day-${i}`).checked) {
+                        recurringDays.push(i);
                     }
                 }
+                if (recurringDays.length === 0) {
+                    alert('Please select at least one day for recurring tasks.');
+                    return;
+                }
             }
-            this.app.taskController.updateTask(taskId, taskData);
-        } else {
-            // Creating a new task
-            this.app.taskController.createTask(taskData);
-        }
 
-        // Refresh UI
-        this.taskView.refreshTaskLists();
-        if (this.app.calendarController) {
-            this.app.calendarController.refreshCalendar();
-        }
+            // --- Construct taskData object ---
+            const taskData = {
+                name,
+                dueDate: dueDate || null,
+                dueTime: dueTime || null,
+                startDate: startDate || null,
+                startTime: startTime || null,
+                estimatedDuration: estimatedDuration,
+                priority,
+                timerSettings: {
+                    focusDuration,
+                    breakDuration,
+                    useCustomTimer
+                },
+                reminderTime,
+                procrastinationMode,
+                isRecurring,
+                recurringDays
+            };
 
-        // Close the modal
-        const modalElement = document.getElementById('task-modal');
-        if (modalElement) {
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            if (modal) {
-                modal.hide();
+            console.log('Task data to save:', taskData);
+
+            // --- Handle Task Creation or Update ---
+            if (taskId) {
+                // Editing an existing task
+                console.log('Updating existing task with ID:', taskId);
+                const originalTask = this.app.taskController.getTaskById(taskId);
+
+                if (originalTask && originalTask.status === 'ongoing') {
+                    const confirmMsg = 'Changing focus or break times for an ongoing task will restart the current timer session with the new durations. Continue?';
+                    const originalTimerSettings = originalTask.timerSettings;
+                    const newTimerSettings = taskData.timerSettings;
+
+                    if (newTimerSettings.focusDuration !== originalTimerSettings.focusDuration ||
+                        newTimerSettings.breakDuration !== originalTimerSettings.breakDuration) {
+                        if (!confirm(confirmMsg)) {
+                            return; // User cancelled
+                        }
+                    }
+                }
+                
+                // Actually update the task
+                const updatedTask = this.app.taskController.updateTask(taskId, taskData);
+                console.log('Task updated:', updatedTask);
+            } else {
+                // Creating a new task
+                console.log('Creating new task');
+                const createdTask = this.app.taskController.createTask(taskData);
+                console.log('Task created:', createdTask);
             }
+
+            // Refresh UI
+            this.taskView.refreshTaskLists();
+            if (this.app.calendarController) {
+                this.app.calendarController.refreshCalendar();
+            }
+
+            // Close the modal
+            const modalElement = document.getElementById('task-modal');
+            if (modalElement) {
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) {
+                    console.log('Closing modal');
+                    modal.hide();
+                } else {
+                    console.warn('Could not get Bootstrap modal instance');
+                }
+            } else {
+                console.warn('Modal element not found');
+            }
+            
+            console.log('Save task operation completed successfully');
+        } catch (error) {
+            // Catch and log any errors that might be preventing the save
+            console.error('Error in saveTask method:', error);
+            alert('An error occurred while saving the task: ' + error.message);
         }
     }
 }

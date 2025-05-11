@@ -267,7 +267,6 @@ class App {
                 this.calendarController.refreshCalendar();
             }
         }
-        
     }
 
      /**

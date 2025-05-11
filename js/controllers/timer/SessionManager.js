@@ -109,15 +109,26 @@ export class SessionManager {
             return;
         }
         
-        // Complete all remaining sessions
-        while (this.activeTask.getCurrentSession()) {
-            this.activeTask.completeCurrentSession();
-        }
+        // Store the current progress instead of completing all remaining sessions
+        const taskToEnd = this.activeTask;
         
-        // Save the task
-        this.taskController.updateTask(this.activeTask.id, this.activeTask);
+        // Set a flag to indicate that this task was ended early (not naturally completed)
+        taskToEnd.endedEarly = true;
         
-        // Reset the task and session
+        // Record the current progress at the time of ending
+        taskToEnd.endProgress = {
+            completedSessions: taskToEnd.progress.completedSessions,
+            currentSession: taskToEnd.progress.currentSession,
+            timeSpent: taskToEnd.progress.timeSpent
+        };
+        
+        // Update status to completed without completing all sessions
+        taskToEnd.status = TaskStatus.COMPLETED;
+        
+        // Save the task with its current progress
+        this.taskController.updateTask(taskToEnd.id, taskToEnd);
+        
+        // Reset the active task and current session
         const endedTask = this.activeTask;
         this.activeTask = null;
         this.currentSession = null;

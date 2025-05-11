@@ -95,6 +95,9 @@ export class TaskListRenderer {
         taskItem.className = 'task-item';
         taskItem.dataset.id = task.id;
         
+        // Add position relative for absolute positioned delete button
+        taskItem.style.position = 'relative';
+        
         // Add status-specific class
         if (task.status === TaskStatus.MISSED) {
             taskItem.classList.add('task-missed');
@@ -116,6 +119,62 @@ export class TaskListRenderer {
         
         taskHeader.appendChild(taskName);
         taskHeader.appendChild(taskPriority);
+        
+        // Add delete button for completed tasks
+        if (isCompleted) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-icon delete-task-btn';
+            deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>';
+            deleteBtn.style.position = 'absolute';
+            deleteBtn.style.bottom = '10px';
+            deleteBtn.style.right = '10px';
+            deleteBtn.style.color = '#dc3545';
+            
+        // In TaskListRenderer.js, modify the delete button event handler:
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm('Are you sure you want to delete this task?')) {
+                // Store the ID of the task being deleted
+                const taskBeingDeletedId = task.id;
+                
+                // Check if this is the active task in the timer
+                const isActiveTask = this.app.timerController && 
+                    this.app.timerController.activeTask && 
+                    this.app.timerController.activeTask.id === taskBeingDeletedId;
+                
+                // If this is the active task, stop the timer first
+                if (isActiveTask) {
+                    this.app.timerController.stopTimer();
+                    this.app.timerController.sessionManager.setActiveTask(null);
+                }
+                
+                // Delete the task
+                this.app.taskController.deleteTask(taskBeingDeletedId);
+                
+                // If this was the active task, try to select the next available task
+                if (isActiveTask) {
+                    // Get all pending/active tasks that could be selected next
+                    const pendingTasks = this.app.taskController.getPendingTasks();
+                    const activeAndPartialTasks = this.app.taskController.getActiveAndPartialTasks();
+                    const availableTasks = [...activeAndPartialTasks, ...pendingTasks];
+                    
+                    if (availableTasks.length > 0) {
+                        // Select the first available task
+                        this.app.selectTask(availableTasks[0].id);
+                    }
+                }
+                
+                this.refreshTaskLists();
+                
+                // Refresh the calendar if it exists
+                if (this.app.calendarController) {
+                    this.app.calendarController.refreshCalendar();
+                }
+            }
+        });
+            
+            taskItem.appendChild(deleteBtn);
+        }
         
         // Create task details
         const taskDetails = document.createElement('div');

@@ -144,6 +144,13 @@ export class TimerView {
             return;
         }
         
+        // IMPROVEMENT 3: Show 00:00 instead of 25:00 when no task is active
+        if (!this.app.timerController.activeTask) {
+            this.elements.clock.textContent = "00:00";
+            this.elements.progressBar.style.width = "0%";
+            return;
+        }
+        
         // Format time left as MM:SS
         const minutes = Math.floor(timeLeft / 60);
         const seconds = timeLeft % 60;
@@ -158,6 +165,7 @@ export class TimerView {
             this.focusElements.clock.textContent = timeString;
         }
     }
+
 
     /**
      * Update the timer container class based on session type
@@ -214,7 +222,33 @@ export class TimerView {
         
         if (task) {
             this.elements.currentTask.textContent = task.name;
-            this.elements.taskStatus.textContent = status;
+            
+            // If status is provided, use it directly
+            if (status) {
+                this.elements.taskStatus.textContent = status;
+            } else {
+                // Otherwise, determine status based on task state and timer state
+                const timerState = this.app.timerController.timerState;
+                
+                switch (task.status) {
+                    case 'ongoing':
+                        this.elements.taskStatus.textContent = 'Task Ongoing';
+                        break;
+                    case 'partial':
+                        this.elements.taskStatus.textContent = 'Task Stopped';
+                        break;
+                    default:
+                        this.elements.taskStatus.textContent = 'Task Ready To Start';
+                        break;
+                }
+                
+                // Override based on timer state if necessary
+                if (timerState === 'running') {
+                    this.elements.taskStatus.textContent = 'Task Ongoing';
+                } else if (timerState === 'paused') {
+                    this.elements.taskStatus.textContent = 'Task Stopped';
+                }
+            }
             
             // Update session counter
             this.updateSessionCounter(task.progress);
@@ -241,13 +275,19 @@ export class TimerView {
             return;
         }
         
-        if (progress) {
-            this.elements.currentSession.textContent = progress.completedSessions;
-            this.elements.totalSessions.textContent = progress.totalSessions;
-        } else {
-            this.elements.currentSession.textContent = '0';
-            this.elements.totalSessions.textContent = '0';
+        // IMPROVEMENT 3 & 4: Show N/A when no active task or fix the counter bug
+        if (!progress) {
+            this.elements.currentSession.textContent = "N";
+            this.elements.totalSessions.textContent = "A";
+            return;
         }
+        
+        // Fix for bug #4: Make sure we're displaying the correct session count
+        this.elements.currentSession.textContent = progress.completedSessions;
+        this.elements.totalSessions.textContent = progress.totalSessions;
+        
+        // For debugging, log the values
+        console.log(`Updating session counter: ${progress.completedSessions}/${progress.totalSessions}`);
     }
 
     /**
@@ -261,36 +301,33 @@ export class TimerView {
             return;
         }
         
-        console.log('TimerView.updateControlButtons called with state:', timerState);
-        
+        // IMPROVEMENT 3: Ensure buttons are properly disabled when no task is active
         switch (timerState) {
             case 'running':
                 this.elements.startBtn.disabled = true;
-                this.elements.pauseBtn.disabled = false; // IMPORTANT: Enable the pause button
+                this.elements.pauseBtn.disabled = false;
                 this.elements.endBtn.disabled = false;
-                console.log('TimerView: Pause button enabled for running state');
                 break;
             case 'paused':
                 this.elements.startBtn.disabled = false;
                 this.elements.startBtn.textContent = 'Resume';
                 this.elements.pauseBtn.disabled = true;
                 this.elements.endBtn.disabled = false;
-                console.log('TimerView: Pause button disabled for paused state');
                 break;
             case 'stopped':
                 this.elements.startBtn.disabled = !hasActiveTask;
                 this.elements.startBtn.textContent = 'Start';
                 this.elements.pauseBtn.disabled = true;
-                this.elements.endBtn.disabled = true;
-                console.log('TimerView: Pause button disabled for stopped state');
+                this.elements.endBtn.disabled = !hasActiveTask; // Also disable End Task when no task is active
                 break;
         }
         
         // Update focus mode button
         if (this.elements.focusModeBtn) {
-            this.elements.focusModeBtn.disabled = timerState === 'stopped';
+            this.elements.focusModeBtn.disabled = timerState === 'stopped' || !hasActiveTask;
         }
     }
+
 
 
     /**

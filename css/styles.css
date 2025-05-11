@@ -442,6 +442,20 @@ body.theme-transition * {
     background-color: rgba(13, 110, 253, 0.15);
 }
 
+.delete-task-btn {
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.delete-task-btn:hover {
+    opacity: 1;
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.task-item:hover .delete-task-btn {
+    opacity: 1;
+}
+
 /* Responsive Styles */
 @media (max-width: 768px) {
     .app-container {

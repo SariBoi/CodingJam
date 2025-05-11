@@ -172,14 +172,14 @@
                     
                     <div class="timer-display">
                         <div class="timer-type" id="timer-type">FOCUS</div>
-                        <div class="timer-clock" id="timer-clock">25:00</div>
+                        <div class="timer-clock" id="timer-clock">00:00</div>
                         <div class="timer-progress">
                             <div class="progress">
                                 <div class="progress-bar" id="timer-progress-bar" role="progressbar" style="width: 100%"></div>
                             </div>
                         </div>
                         <div class="session-counter" id="session-counter">
-                            Session: <span id="current-session">0</span>/<span id="total-sessions">4</span>
+                            Session: <span id="current-session">N</span>/<span id="total-sessions">A</span>
                         </div>
                     </div>
                     
@@ -247,16 +247,6 @@
                         </div>
                         
                         <div class="mb-3">
-                            <label for="task-due-date" class="form-label">Due Date (Optional)</label>
-                            <input type="date" class="form-control" id="task-due-date">
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="task-due-time" class="form-label">Due Time (Optional)</label>
-                            <input type="time" class="form-control" id="task-due-time">
-                        </div>
-                        
-                        <div class="mb-3">
                             <label for="task-start-date" class="form-label">Start Date (Optional)</label>
                             <input type="date" class="form-control" id="task-start-date">
                         </div>
@@ -264,6 +254,16 @@
                         <div class="mb-3">
                             <label for="task-start-time" class="form-label">Start Time (Optional)</label>
                             <input type="time" class="form-control" id="task-start-time">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="task-due-date" class="form-label">Due Date (Optional)</label>
+                            <input type="date" class="form-control" id="task-due-date">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="task-due-time" class="form-label">Due Time (Optional)</label>
+                            <input type="time" class="form-control" id="task-due-time">
                         </div>
                         
                         <div class="mb-3">
@@ -406,6 +406,5 @@
     
     <!-- Main JavaScript files will be included here later -->
     <script src="js/app.js" type="module"></script>
-    <script src="pomodoro-debug.js" type="module"></script>
 </body>
 </html>
