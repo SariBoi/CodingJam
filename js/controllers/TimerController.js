@@ -1,15 +1,20 @@
 /**
  * TimerController.js
  * 
- * Controller for managing the Pomodoro timer functionality.
- * Handles timer state, session transitions, and UI updates.
+ * Core controller for managing the Pomodoro timer functionality.
+ * Now uses specialized managers for different responsibilities.
  */
 
 import { TaskStatus, SessionType } from '../models/Task.js';
-import { StorageManager } from '../services/StorageManager.js';
+import { TimerStateManager } from './timer/TimerStateManager.js';
+import { TimerWorkerManager } from './timer/TimerWorkerManager.js';
+import { SessionManager } from './timer/SessionManager.js';
+import { FocusModeManager } from './timer/FocusModeManager.js';
+import { TimerNotificationManager } from './timer/TimerNotificationManager.js';
 
 /**
  * TimerController class for managing the Pomodoro timer
+ * Acts as a facade for various specialized timer managers
  */
 export class TimerController {
     /**
@@ -21,18 +26,43 @@ export class TimerController {
      */
     constructor(taskController, notificationService, timerView = null, app = null) {
         this.taskController = taskController;
-        this.notificationService = notificationService;
         this.timerView = timerView;
-        this.app = app; // Store reference to the app instance
-        this.activeTask = null;
-        this.currentSession = null;
-        this.timerState = 'stopped'; // 'running', 'paused', 'stopped'
-        this.isFocusMode = false;
+        this.app = app;
         
-        // Initialize the Web Worker
-        this.initWorker();
+        // Initialize managers
+        this.stateManager = new TimerStateManager();
+        this.sessionManager = new SessionManager(taskController);
+        this.workerManager = new TimerWorkerManager(
+            this.updateTimerDisplay.bind(this),
+            this.handleTimerComplete.bind(this)
+        );
+        this.notificationManager = new TimerNotificationManager(notificationService);
+        this.focusModeManager = new FocusModeManager();
         
-        // Set up UI elements
+        // Set up worker state change handler
+        this.workerManager.setStateChangeCallback(this.handleWorkerStateChange.bind(this));
+        
+        // Initialize UI elements
+        this.initUIElements();
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Set up visibility change listener
+        this.setupVisibilityChangeListener();
+        
+        // Timer sound effects
+        this.sounds = {
+            focusEnd: new Audio('../assets/sounds/timer-end.mp3'),
+            breakEnd: new Audio('../assets/sounds/break-start.mp3')
+        };
+    }
+
+    /**
+     * Initialize UI elements
+     */
+    initUIElements() {
+        // Timer UI elements
         this.timerElements = {
             container: document.getElementById('timer-container'),
             clock: document.getElementById('timer-clock'),
@@ -57,104 +87,56 @@ export class TimerController {
             task: document.getElementById('focus-timer-task'),
             exitBtn: document.getElementById('exit-focus-mode-btn')
         };
-        
-        // Set up event listeners (only if timerView is not provided)
-        if (!this.timerView) {
-            this.setupEventListeners();
-        }
-        
-        // Timer sound effects
-        this.sounds = {
-            focusEnd: new Audio('../assets/sounds/timer-end.mp3'),
-            breakEnd: new Audio('../assets/sounds/break-start.mp3')
-        };
-        
-        // Auto-pause on visibility change
-        this.setupVisibilityChangeListener();
-    }
-
-    /**
-     * Initialize the Web Worker for background timing
-     */
-    initWorker() {
-        this.worker = new Worker('js/services/TimerWorker.js');
-        
-        // Listen for messages from the worker
-        this.worker.onmessage = (e) => {
-            const data = e.data;
-            
-            switch (data.type) {
-                case 'tick':
-                    this.updateTimerDisplay(data.timeLeft, data.progress);
-                    break;
-                case 'complete':
-                    this.handleTimerComplete();
-                    break;
-                case 'paused':
-                    this.timerState = 'paused';
-                    this.updateControlButtons();
-                    break;
-                case 'resumed':
-                    this.timerState = 'running';
-                    this.updateControlButtons();
-                    break;
-                case 'stopped':
-                    this.timerState = 'stopped';
-                    this.updateControlButtons();
-                    break;
-            }
-        };
     }
 
     /**
      * Set up event listeners for timer controls
      */
     setupEventListeners() {
-        // Check if elements exist before adding listeners
-        if (this.timerElements.startBtn) {
-            this.timerElements.startBtn.addEventListener('click', () => {
-                if (this.timerState === 'stopped') {
-                    // If no task is active, do nothing
-                    if (!this.activeTask) {
-                        alert('Please select a task first.');
-                        return;
+        if (!this.timerView) {
+            if (this.timerElements.startBtn) {
+                this.timerElements.startBtn.addEventListener('click', () => {
+                    if (this.stateManager.isStopped()) {
+                        if (!this.getActiveTask()) {
+                            alert('Please select a task first.');
+                            return;
+                        }
+                        this.startTimer();
+                    } else if (this.stateManager.isPaused()) {
+                        this.resumeTimer();
                     }
-                    
-                    this.startTimer();
-                } else if (this.timerState === 'paused') {
-                    this.resumeTimer();
-                }
-            });
-        }
-        
-        if (this.timerElements.pauseBtn) {
-            this.timerElements.pauseBtn.addEventListener('click', () => {
-                if (this.timerState === 'running') {
-                    this.pauseTimer();
-                }
-            });
-        }
-        
-        if (this.timerElements.endBtn) {
-            this.timerElements.endBtn.addEventListener('click', () => {
-                if (this.timerState !== 'stopped' && this.activeTask) {
-                    if (confirm('Are you sure you want to end this task?')) {
-                        this.endTask();
+                });
+            }
+            
+            if (this.timerElements.pauseBtn) {
+                this.timerElements.pauseBtn.addEventListener('click', () => {
+                    if (this.stateManager.isRunning()) {
+                        this.pauseTimer();
                     }
-                }
-            });
-        }
-        
-        if (this.timerElements.focusModeBtn) {
-            this.timerElements.focusModeBtn.addEventListener('click', () => {
-                this.toggleFocusMode();
-            });
-        }
-        
-        if (this.focusModeElements.exitBtn) {
-            this.focusModeElements.exitBtn.addEventListener('click', () => {
-                this.exitFocusMode();
-            });
+                });
+            }
+            
+            if (this.timerElements.endBtn) {
+                this.timerElements.endBtn.addEventListener('click', () => {
+                    if (!this.stateManager.isStopped() && this.getActiveTask()) {
+                        if (confirm('Are you sure you want to end this task?')) {
+                            this.endTask();
+                        }
+                    }
+                });
+            }
+            
+            if (this.timerElements.focusModeBtn) {
+                this.timerElements.focusModeBtn.addEventListener('click', () => {
+                    this.toggleFocusMode();
+                });
+            }
+            
+            if (this.focusModeElements.exitBtn) {
+                this.focusModeElements.exitBtn.addEventListener('click', () => {
+                    this.exitFocusMode();
+                });
+            }
         }
     }
 
@@ -163,16 +145,37 @@ export class TimerController {
      */
     setupVisibilityChangeListener() {
         document.addEventListener('visibilitychange', () => {
-            const settings = StorageManager.getSettings();
+            const settings = this.app.settings;
             
             // Check if auto-pause is enabled in settings
             if (settings.autoPauseOnInactiveTab !== false) {
-                if (document.hidden && this.timerState === 'running') {
+                if (document.hidden && this.stateManager.isRunning()) {
                     // Auto-pause when tab is hidden
                     this.pauseTimer();
                 }
             }
         });
+    }
+
+    /**
+     * Handle worker state change
+     * @param {string} stateType State change type from worker
+     */
+    handleWorkerStateChange(stateType) {
+        switch (stateType) {
+            case 'paused':
+                this.stateManager.changeState('paused');
+                break;
+            case 'resumed':
+                this.stateManager.changeState('running');
+                break;
+            case 'stopped':
+                this.stateManager.changeState('stopped');
+                break;
+        }
+        
+        // Update UI
+        this.updateControlButtons();
     }
 
     /**
@@ -183,25 +186,22 @@ export class TimerController {
      */
     setActiveTask(task, autoConfirm = true) {
         // If a task is already active and different from the new one, confirm switch
-        if (this.activeTask && this.activeTask.id !== task.id && this.timerState !== 'stopped') {
+        if (this.getActiveTask() && this.getActiveTask().id !== task.id && !this.stateManager.isStopped()) {
             if (!autoConfirm && !confirm('Another task is currently in progress. Switch to the new task?')) {
                 return false;
             }
             
             // Pause the current timer if it's running
-            if (this.timerState === 'running') {
+            if (this.stateManager.isRunning()) {
                 this.pauseTimer();
             }
         }
         
         // Set the new active task
-        this.activeTask = task;
+        this.sessionManager.setActiveTask(task);
         
         // Update the timer UI
         this.updateTaskDisplay();
-        
-        // Get the current session
-        this.currentSession = task.getCurrentSession();
         
         // Update control buttons
         this.updateControlButtons();
@@ -210,50 +210,63 @@ export class TimerController {
     }
 
     /**
+     * Get the active task
+     * @returns {Task|null} Active task or null
+     */
+    get activeTask() {
+        return this.sessionManager.getActiveTask();
+    }
+
+    /**
+     * Get the active task (alternative method)
+     * @returns {Task|null} Active task or null
+     */
+    getActiveTask() {
+        return this.sessionManager.getActiveTask();
+    }
+
+    /**
      * Start the timer for the current session
      */
     startTimer() {
-        if (!this.activeTask || !this.currentSession) {
+        const task = this.getActiveTask();
+        const session = this.sessionManager.getCurrentSession();
+        
+        if (!task || !session) {
             return;
         }
         
-        // Update task status
-        this.activeTask.start();
-        this.taskController.updateTask(this.activeTask.id, this.activeTask);
+        // Start the task in the session manager
+        this.sessionManager.startTask();
         
         // Get session duration in seconds
-        const durationSeconds = this.currentSession.duration * 60;
+        const durationSeconds = session.duration * 60;
         
         // Set timer container class based on session type
-        this.updateTimerContainerClass();
+        this.updateTimerContainerClass(session.type);
         
         // Start the worker timer
-        this.worker.postMessage({
-            command: 'start',
-            duration: durationSeconds
-        });
+        this.workerManager.startTimer(durationSeconds);
         
         // Update timer state
-        this.timerState = 'running';
+        this.stateManager.changeState('running');
         
         // Update control buttons
         this.updateControlButtons();
         
         // If task has focus mode enabled, enter focus mode
-        if (this.activeTask.useFocusMode) {
+        if (task.useFocusMode) {
             this.enterFocusMode();
         }
         
         // Show notification that the session started
-        if (this.notificationService) {
-            if (this.currentSession.type === SessionType.FOCUS) {
-                this.notificationService.showFocusStartNotification(
-                    this.activeTask, 
-                    this.activeTask.progress.currentSession + 1
-                );
-            } else {
-                this.notificationService.showBreakStartNotification(this.activeTask);
-            }
+        if (session.type === SessionType.FOCUS) {
+            this.notificationManager.showFocusStartNotification(
+                task, 
+                task.progress.currentSession + 1
+            );
+        } else {
+            this.notificationManager.showBreakStartNotification(task);
         }
     }
 
@@ -261,15 +274,24 @@ export class TimerController {
      * Pause the timer
      */
     pauseTimer() {
-        if (this.timerState === 'running') {
+        if (this.stateManager.isRunning()) {
             // Pause the worker timer
-            this.worker.postMessage({ command: 'pause' });
+            this.workerManager.pauseTimer();
             
-            // Update task status (to partial if it was ongoing)
-            if (this.activeTask && this.activeTask.status === TaskStatus.ONGOING) {
-                this.activeTask.pause();
-                this.taskController.updateTask(this.activeTask.id, this.activeTask);
+            // Update timer state
+            this.stateManager.changeState('paused');
+            
+            // Pause the task in the session manager
+            this.sessionManager.pauseTask();
+            
+            // Update timer container class for paused state
+            const session = this.sessionManager.getCurrentSession();
+            if (session) {
+                this.updateTimerContainerClass(session.type, true);
             }
+            
+            // Update control buttons
+            this.updateControlButtons();
         }
     }
 
@@ -277,15 +299,24 @@ export class TimerController {
      * Resume the timer
      */
     resumeTimer() {
-        if (this.timerState === 'paused') {
+        if (this.stateManager.isPaused()) {
             // Resume the worker timer
-            this.worker.postMessage({ command: 'resume' });
+            this.workerManager.resumeTimer();
             
-            // Update task status (to ongoing if it was partial)
-            if (this.activeTask && this.activeTask.status === TaskStatus.PARTIAL) {
-                this.activeTask.start();
-                this.taskController.updateTask(this.activeTask.id, this.activeTask);
+            // Update timer state
+            this.stateManager.changeState('running');
+            
+            // Resume the task in the session manager
+            this.sessionManager.startTask();
+            
+            // Update timer container class to remove paused state
+            const session = this.sessionManager.getCurrentSession();
+            if (session) {
+                this.updateTimerContainerClass(session.type, false);
             }
+            
+            // Update control buttons
+            this.updateControlButtons();
         }
     }
 
@@ -294,19 +325,19 @@ export class TimerController {
      */
     stopTimer() {
         // Stop the worker timer
-        this.worker.postMessage({ command: 'stop' });
+        this.workerManager.stopTimer();
         
         // Reset the timer display
         this.updateTimerDisplay(0, 100);
         
         // Update timer state
-        this.timerState = 'stopped';
+        this.stateManager.changeState('stopped');
         
         // Update control buttons
         this.updateControlButtons();
         
         // Exit focus mode if active
-        if (this.isFocusMode) {
+        if (this.focusModeManager.isFocusModeActive()) {
             this.exitFocusMode();
         }
     }
@@ -315,109 +346,88 @@ export class TimerController {
      * End the current task
      */
     endTask() {
-        if (!this.activeTask) {
+        if (!this.getActiveTask()) {
             return;
         }
         
-        // Complete all remaining sessions
-        while (this.activeTask.getCurrentSession()) {
-            this.activeTask.completeCurrentSession();
-        }
-        
-        // Save the task
-        this.taskController.updateTask(this.activeTask.id, this.activeTask);
+        // End the task in the session manager
+        const endedTask = this.sessionManager.getActiveTask(); // Save reference for notification
+        this.sessionManager.endTask();
         
         // Stop the timer
         this.stopTimer();
-        
-        // Clear the active task
-        this.activeTask = null;
-        this.currentSession = null;
         
         // Update the display
         this.updateTaskDisplay();
         
         // Show notification
-        if (this.notificationService) {
-            this.notificationService.showTaskCompletedNotification(this.activeTask);
-        }
+        this.notificationManager.showTaskCompletedNotification(endedTask);
     }
 
     /**
      * Handle timer completion
      */
     handleTimerComplete() {
+        const task = this.getActiveTask();
+        const session = this.sessionManager.getCurrentSession();
+        
+        if (!task || !session) {
+            // No active task, just stop the timer
+            this.stopTimer();
+            return;
+        }
+        
         // Play sound based on session type
-        if (this.currentSession) {
-            if (this.currentSession.type === SessionType.FOCUS) {
-                this.sounds.focusEnd.play();
-            } else {
-                this.sounds.breakEnd.play();
-            }
+        if (session.type === SessionType.FOCUS) {
+            this.sounds.focusEnd.play();
+        } else {
+            this.sounds.breakEnd.play();
         }
         
         // Show notification
-        if (this.notificationService) {
-            if (this.currentSession.type === SessionType.FOCUS) {
-                this.notificationService.showFocusEndNotification(
-                    this.activeTask,
-                    this.activeTask.progress.completedSessions
-                );
-            } else {
-                this.notificationService.showBreakEndNotification(this.activeTask);
-            }
+        if (session.type === SessionType.FOCUS) {
+            this.notificationManager.showFocusEndNotification(
+                task,
+                task.progress.completedSessions
+            );
+        } else {
+            this.notificationManager.showBreakEndNotification(task);
         }
         
-        // Mark current session as completed
-        if (this.activeTask) {
-            this.taskController.completeTaskSession(this.activeTask.id);
+        // Complete the current session
+        const nextSession = this.sessionManager.completeCurrentSession();
+        
+        // Refresh the task list to update progress
+        if (this.app && this.app.taskView) {
+            this.app.taskView.refreshTaskLists(task.id);
+        }
+        
+        // Refresh the calendar if available
+        if (this.app && this.app.calendarController) {
+            this.app.calendarController.refreshCalendar();
+        }
+        
+        // Check if all sessions are completed
+        if (!nextSession) {
+            // Task is completed
+            this.stopTimer();
             
-            // Get the updated task
-            this.activeTask = this.taskController.getTaskById(this.activeTask.id);
+            // Show task completed message
+            this.notificationManager.showTaskCompletedNotification(task);
             
-            // Update the session counter
-            this.updateSessionCounter();
-            
-            // Get the next session
-            this.currentSession = this.activeTask.getCurrentSession();
-            
-            // Refresh the task list to update progress
-            if (this.app && this.app.taskView) {
-                this.app.taskView.refreshTaskLists(this.activeTask.id);
-            }
-            
-            // Refresh the calendar if available
-            if (this.app && this.app.calendarController) {
-                this.app.calendarController.refreshCalendar();
-            }
-            
-            // Check if all sessions are completed
-            if (!this.currentSession) {
-                // Task is completed
-                this.stopTimer();
-                
-                // Show task completed message
-                if (this.notificationService) {
-                    this.notificationService.showTaskCompletedNotification(this.activeTask);
-                }
-                
-                return;
-            }
-            
-            // Update timer container class for the new session
-            this.updateTimerContainerClass();
-            
-            // Check if auto-start next session is enabled
-            const settings = StorageManager.getSettings();
-            if (settings.autoStartNextSession) {
-                // Auto-start the next session
-                this.startTimer();
-            } else {
-                // Stop the timer and wait for user action
-                this.stopTimer();
-            }
+            return;
+        }
+        
+        // Update timer container class for the new session
+        this.updateTimerContainerClass();
+        
+        // Check if auto-start next session is enabled
+        const settings = this.app.settings;
+        if (settings.autoStartNextSession) {
+            // Auto-start the next session
+            this.startTimer();
         } else {
-            // No active task, just stop the timer
+            // Stop the timer and wait for user action
             this.stopTimer();
         }
     }
@@ -432,7 +442,6 @@ export class TimerController {
             // Use TimerView to update the display
             this.timerView.updateTimerDisplay(timeLeft, progress);
         } else if (this.timerElements.clock && this.timerElements.progressBar) {
-            // Fallback to direct DOM manipulation
             // Format time left as MM:SS
             const minutes = Math.floor(timeLeft / 60);
             const seconds = timeLeft % 60;
@@ -443,7 +452,7 @@ export class TimerController {
             this.timerElements.progressBar.style.width = `${progress}%`;
             
             // Update focus mode timer if active
-            if (this.isFocusMode && this.focusModeElements.clock) {
+            if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.clock) {
                 this.focusModeElements.clock.textContent = timeString;
             }
         }
@@ -452,33 +461,44 @@ export class TimerController {
     /**
      * Update the timer container class based on session type
      */
-    updateTimerContainerClass() {
+    updateTimerContainerClass(sessionType, isPaused = false) {
+        const session = this.sessionManager.getCurrentSession();
+        sessionType = sessionType || (session ? session.type : SessionType.FOCUS);
+        
         if (this.timerView) {
             // Use TimerView to update the container class
-            if (this.currentSession) {
-                this.timerView.updateTimerContainerClass(this.currentSession.type);
-            }
-        } else if (this.timerElements.container && this.currentSession) {
-            // Fallback to direct DOM manipulation
+            this.timerView.updateTimerContainerClass(sessionType, isPaused);
+        } else if (this.timerElements.container) {
             // Remove existing state classes
-            this.timerElements.container.classList.remove('focus-state', 'break-state');
+            this.timerElements.container.classList.remove('focus-state', 'break-state', 'paused-state');
             
-            // Add class based on session type
-            if (this.currentSession.type === SessionType.FOCUS) {
-                this.timerElements.container.classList.add('focus-state');
-                this.timerElements.type.textContent = 'FOCUS';
+            if (isPaused) {
+                // Add paused state class
+                this.timerElements.container.classList.add('paused-state');
+                this.timerElements.type.textContent = 'PAUSED';
                 
                 // Update focus mode type if active
-                if (this.isFocusMode && this.focusModeElements.type) {
-                    this.focusModeElements.type.textContent = 'FOCUS TIME';
+                if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.type) {
+                    this.focusModeElements.type.textContent = 'PAUSED';
                 }
             } else {
-                this.timerElements.container.classList.add('break-state');
-                this.timerElements.type.textContent = 'BREAK';
-                
-                // Update focus mode type if active
-                if (this.isFocusMode && this.focusModeElements.type) {
-                    this.focusModeElements.type.textContent = 'BREAK TIME';
+                // Add class based on session type
+                if (sessionType === SessionType.FOCUS) {
+                    this.timerElements.container.classList.add('focus-state');
+                    this.timerElements.type.textContent = 'FOCUS';
+                    
+                    // Update focus mode type if active
+                    if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.type) {
+                        this.focusModeElements.type.textContent = 'FOCUS TIME';
+                    }
+                } else {
+                    this.timerElements.container.classList.add('break-state');
+                    this.timerElements.type.textContent = 'BREAK';
+                    
+                    // Update focus mode type if active
+                    if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.type) {
+                        this.focusModeElements.type.textContent = 'BREAK TIME';
+                    }
                 }
             }
         }
@@ -488,11 +508,13 @@ export class TimerController {
      * Update the task display
      */
     updateTaskDisplay() {
+        const task = this.getActiveTask();
+        
         if (this.timerView) {
             // Use TimerView to update the task display
             let statusText = '';
-            if (this.activeTask) {
-                switch (this.activeTask.status) {
+            if (task) {
+                switch (task.status) {
                     case TaskStatus.ONGOING:
                         statusText = 'In progress';
                         break;
@@ -505,14 +527,13 @@ export class TimerController {
                 }
             }
             
-            this.timerView.updateTaskDisplay(this.activeTask, statusText);
+            this.timerView.updateTaskDisplay(task, statusText);
         } else if (this.timerElements.currentTask && this.timerElements.taskStatus) {
-            // Fallback to direct DOM manipulation
-            if (this.activeTask) {
-                this.timerElements.currentTask.textContent = this.activeTask.name;
+            if (task) {
+                this.timerElements.currentTask.textContent = task.name;
                 
                 let statusText = '';
-                switch (this.activeTask.status) {
+                switch (task.status) {
                     case TaskStatus.ONGOING:
                         statusText = 'In progress';
                         break;
@@ -530,8 +551,8 @@ export class TimerController {
                 this.updateSessionCounter();
                 
                 // Update focus mode task if active
-                if (this.isFocusMode && this.focusModeElements.task) {
-                    this.focusModeElements.task.textContent = `Working on: ${this.activeTask.name}`;
+                if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.task) {
+                    this.focusModeElements.task.textContent = `Working on: ${task.name}`;
                 }
             } else {
                 this.timerElements.currentTask.textContent = 'No Active Task';
@@ -550,16 +571,18 @@ export class TimerController {
      * Update the session counter
      */
     updateSessionCounter() {
+        const task = this.getActiveTask();
+        
         if (this.timerView) {
             // Use TimerView to update the session counter
-            if (this.activeTask) {
-                this.timerView.updateSessionCounter(this.activeTask.progress);
+            if (task) {
+                this.timerView.updateSessionCounter(task.progress);
             } else {
                 this.timerView.updateSessionCounter(null);
             }
-        } else if (this.timerElements.currentSession && this.timerElements.totalSessions && this.activeTask) {
+        } else if (this.timerElements.currentSession && this.timerElements.totalSessions && task) {
             // Fallback to direct DOM manipulation
-            const progress = this.activeTask.progress;
+            const progress = task.progress;
             this.timerElements.currentSession.textContent = progress.completedSessions;
             this.timerElements.totalSessions.textContent = progress.totalSessions;
         }
@@ -569,12 +592,14 @@ export class TimerController {
      * Update the control buttons state
      */
     updateControlButtons() {
+        const timerState = this.stateManager.getState();
+        const hasActiveTask = !!this.getActiveTask();
+        
         if (this.timerView) {
             // Use TimerView to update the control buttons
-            this.timerView.updateControlButtons(this.timerState, !!this.activeTask);
+            this.timerView.updateControlButtons(timerState, hasActiveTask);
         } else if (this.timerElements.startBtn && this.timerElements.pauseBtn && this.timerElements.endBtn) {
-            // Fallback to direct DOM manipulation
-            switch (this.timerState) {
+            switch (timerState) {
                 case 'running':
                     this.timerElements.startBtn.disabled = true;
                     this.timerElements.pauseBtn.disabled = false;
@@ -587,17 +612,17 @@ export class TimerController {
                     this.timerElements.endBtn.disabled = false;
                     break;
                 case 'stopped':
-                    this.timerElements.startBtn.disabled = !this.activeTask;
+                    this.timerElements.startBtn.disabled = !hasActiveTask;
                     this.timerElements.startBtn.textContent = 'Start';
                     this.timerElements.pauseBtn.disabled = true;
                     this.timerElements.endBtn.disabled = true;
                     break;
             }
-            
-            // Update focus mode button
-            if (this.timerElements.focusModeBtn) {
-                this.timerElements.focusModeBtn.disabled = this.timerState === 'stopped';
-            }
+        }
+        
+        // Update focus mode button
+        if (this.timerElements.focusModeBtn) {
+            this.timerElements.focusModeBtn.disabled = timerState === 'stopped';
         }
     }
 
@@ -605,7 +630,7 @@ export class TimerController {
      * Toggle focus mode
      */
     toggleFocusMode() {
-        if (this.isFocusMode) {
+        if (this.focusModeManager.isFocusModeActive()) {
             this.exitFocusMode();
         } else {
             this.enterFocusMode();
@@ -616,135 +641,44 @@ export class TimerController {
      * Enter focus mode
      */
     enterFocusMode() {
-        // Enable focus mode
-        this.isFocusMode = true;
-        
         // Save focus mode preference for the task
-        if (this.activeTask) {
-            this.activeTask.useFocusMode = true;
-            this.taskController.updateTask(this.activeTask.id, this.activeTask);
+        const task = this.getActiveTask();
+        if (task) {
+            task.useFocusMode = true;
+            this.taskController.updateTask(task.id, task);
         }
         
-        if (this.timerView) {
-            // Use TimerView to update focus mode
-            this.timerView.updateFocusMode(true);
-        } else if (this.focusModeElements.overlay) {
-            // Fallback to direct DOM manipulation
-            // Update focus mode UI
-            if (this.activeTask) {
-                this.focusModeElements.task.textContent = `Working on: ${this.activeTask.name}`;
-            }
-            
-            if (this.currentSession) {
-                this.focusModeElements.type.textContent = 
-                    this.currentSession.type === SessionType.FOCUS ? 'FOCUS TIME' : 'BREAK TIME';
-            }
-            
-            // Get current time from worker
-            this.worker.postMessage({ command: 'getTimeLeft' });
-            
-            // Show the overlay
-            this.focusModeElements.overlay.classList.add('active');
-        }
+        // Get current time from worker
+        this.workerManager.getTimeLeft();
         
-        // Request full screen if possible (needs user gesture)
-        try {
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen();
-            }
-        } catch (e) {
-            console.warn('Could not enter full screen mode:', e);
-        }
+        // Delegate to focus mode manager
+        this.focusModeManager.enterFocusMode(
+            task,
+            this.sessionManager.getCurrentSession(),
+            this.focusModeElements
+        );
     }
 
     /**
      * Exit focus mode
      */
     exitFocusMode() {
-        // Disable focus mode
-        this.isFocusMode = false;
-        
-        if (this.timerView) {
-            // Use TimerView to update focus mode
-            this.timerView.updateFocusMode(false);
-        } else if (this.focusModeElements.overlay) {
-            // Fallback to direct DOM manipulation
-            // Hide the overlay
-            this.focusModeElements.overlay.classList.remove('active');
-        }
-        
-        // Exit full screen if in full screen mode
-        if (document.fullscreenElement) {
-            try {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
-            } catch (e) {
-                console.warn('Could not exit full screen mode:', e);
-            }
-        }
+        this.focusModeManager.exitFocusMode();
     }
 
     /**
-     * Check if notifications are supported and permission is granted
-     * @returns {boolean} True if notifications are supported and allowed
+     * Get focus mode active state
+     * @returns {boolean} True if focus mode is active
      */
-    areNotificationsEnabled() {
-        return "Notification" in window && Notification.permission === "granted";
+    get isFocusMode() {
+        return this.focusModeManager.isFocusModeActive();
     }
 
     /**
-     * Request notification permission
-     * @returns {Promise<boolean>} Promise that resolves to true if permission is granted
+     * Get the current timer state
+     * @returns {string} Timer state
      */
-    async requestNotificationPermission() {
-        if (!("Notification" in window)) {
-            return false;
-        }
-        
-        if (Notification.permission === "granted") {
-            return true;
-        }
-        
-        const permission = await Notification.requestPermission();
-        return permission === "granted";
-    }
-
-    /**
-     * Show a notification
-     * @param {string} title Notification title
-     * @param {string} body Notification body text
-     */
-    showNotification(title, body) {
-        // First check settings to see if notifications are enabled
-        const settings = StorageManager.getSettings();
-        if (!settings.notifications?.enabled) {
-            return;
-        }
-        
-        // Check if notifications are supported and allowed
-        if (this.areNotificationsEnabled()) {
-            const notification = new Notification(title, {
-                body: body,
-                icon: '/assets/icons/favicon.ico'
-            });
-            
-            // Auto-close after 5 seconds
-            setTimeout(() => notification.close(), 5000);
-            
-            // Add to notification history
-            StorageManager.addNotification({
-                title,
-                body,
-                type: 'timer',
-                taskId: this.activeTask ? this.activeTask.id : null
-            });
-        } else {
-            // Request permission for next time
-            this.requestNotificationPermission();
-            
-            // Log message as fallback
-            console.log(`${title}: ${body}`);
-        }
+    get timerState() {
+        return this.stateManager.getState();
     }
 }

@@ -82,11 +82,12 @@ function pauseTimer() {
         const elapsed = Math.floor((pausedTime - startTime) / 1000);
         timeLeft = Math.max(0, originalDuration - elapsed);
         
-        // Notify main thread
+        // Always notify main thread
         self.postMessage({
             type: 'paused',
             timeLeft: timeLeft,
-            progress: (timeLeft / originalDuration) * 100
+            progress: (timeLeft / originalDuration) * 100,
+            originalDuration: originalDuration
         });
     }
 }
@@ -102,11 +103,12 @@ function resumeTimer() {
         pausedTime = null;
         lastTickTime = Date.now();
         
-        // Notify main thread
+        // Notify main thread with details
         self.postMessage({
             type: 'resumed',
             timeLeft: timeLeft,
-            progress: (timeLeft / originalDuration) * 100
+            progress: (timeLeft / originalDuration) * 100,
+            originalDuration: originalDuration
         });
         
         // Restart timer

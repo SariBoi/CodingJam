@@ -29,8 +29,9 @@ export class Settings {
         };
         
         // Default reminder time (in minutes before task start)
-        this.defaultReminderTime = settingsData.defaultReminderTime || DEFAULT_SETTINGS.defaultReminderTime;
-        
+        this.defaultReminderTime = settingsData.defaultReminderTime !== undefined ? 
+            settingsData.defaultReminderTime : DEFAULT_SETTINGS.defaultReminderTime;     
+           
         // Notification settings
         this.notifications = {
             enabled: settingsData.notifications?.enabled !== undefined ? 

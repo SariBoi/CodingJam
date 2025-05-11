@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
     theme: 'dark',
     focusDuration: 25,
     breakDuration: 5,
-    defaultReminderTime: 60, // minutes before task start
+    defaultReminderTime: 60, // minutes before task start (or null for no reminder)
     activeHours: {
         start: '8:00',
         end: '20:00'

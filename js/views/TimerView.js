@@ -145,30 +145,41 @@ export class TimerView {
      * Update the timer container class based on session type
      * @param {string} sessionType Type of session (focus or break)
      */
-    updateTimerContainerClass(sessionType) {
+    updateTimerContainerClass(sessionType, isPaused = false) {
         if (!this.elements.container) {
             return;
         }
         
         // Remove existing state classes
-        this.elements.container.classList.remove('focus-state', 'break-state');
+        this.elements.container.classList.remove('focus-state', 'break-state', 'paused-state');
         
-        // Add class based on session type
-        if (sessionType === SessionType.FOCUS) {
-            this.elements.container.classList.add('focus-state');
-            this.elements.type.textContent = 'FOCUS';
+        if (isPaused) {
+            // Add paused state styling
+            this.elements.container.classList.add('paused-state');
+            this.elements.type.textContent = 'PAUSED';
             
             // Update focus mode type if active
             if (this.app.timerController.isFocusMode && this.focusElements.type) {
-                this.focusElements.type.textContent = 'FOCUS TIME';
+                this.focusElements.type.textContent = 'PAUSED';
             }
         } else {
-            this.elements.container.classList.add('break-state');
-            this.elements.type.textContent = 'BREAK';
-            
-            // Update focus mode type if active
-            if (this.app.timerController.isFocusMode && this.focusElements.type) {
-                this.focusElements.type.textContent = 'BREAK TIME';
+            // Add class based on session type
+            if (sessionType === SessionType.FOCUS) {
+                this.elements.container.classList.add('focus-state');
+                this.elements.type.textContent = 'FOCUS';
+                
+                // Update focus mode type if active
+                if (this.app.timerController.isFocusMode && this.focusElements.type) {
+                    this.focusElements.type.textContent = 'FOCUS TIME';
+                }
+            } else {
+                this.elements.container.classList.add('break-state');
+                this.elements.type.textContent = 'BREAK';
+                
+                // Update focus mode type if active
+                if (this.app.timerController.isFocusMode && this.focusElements.type) {
+                    this.focusElements.type.textContent = 'BREAK TIME';
+                }
             }
         }
     }
@@ -231,23 +242,28 @@ export class TimerView {
             return;
         }
         
+        console.log('TimerView.updateControlButtons called with state:', timerState);
+        
         switch (timerState) {
             case 'running':
                 this.elements.startBtn.disabled = true;
-                this.elements.pauseBtn.disabled = false;
+                this.elements.pauseBtn.disabled = false; // IMPORTANT: This should enable the pause button
                 this.elements.endBtn.disabled = false;
+                console.log('TimerView: Pause button enabled for running state');
                 break;
             case 'paused':
                 this.elements.startBtn.disabled = false;
                 this.elements.startBtn.textContent = 'Resume';
                 this.elements.pauseBtn.disabled = true;
                 this.elements.endBtn.disabled = false;
+                console.log('TimerView: Pause button disabled for paused state');
                 break;
             case 'stopped':
                 this.elements.startBtn.disabled = !hasActiveTask;
                 this.elements.startBtn.textContent = 'Start';
                 this.elements.pauseBtn.disabled = true;
                 this.elements.endBtn.disabled = true;
+                console.log('TimerView: Pause button disabled for stopped state');
                 break;
         }
         
@@ -256,6 +272,7 @@ export class TimerView {
             this.elements.focusModeBtn.disabled = timerState === 'stopped';
         }
     }
+
 
     /**
      * Handle focus mode state change

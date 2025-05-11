@@ -144,9 +144,11 @@
                     <div class="form-group">
                         <label for="default-reminder-time">Default Reminder Time</label>
                         <select class="form-select" id="default-reminder-time">
+                            <option value="120">2 hours before</option>
                             <option value="60">1 hour before</option>
                             <option value="30">30 minutes before</option>
                             <option value="15">15 minutes before</option>
+                            <option value="none">Don't remind me</option>
                             <option value="custom">Custom</option>
                         </select>
                     </div>
@@ -294,7 +296,6 @@
                         <div class="mb-3">
                             <label for="task-reminder" class="form-label">Remind Me</label>
                             <select class="form-select" id="task-reminder">
-                                <option value="default">Default (1 hour before)</option>
                                 <option value="15">15 minutes before</option>
                                 <option value="30">30 minutes before</option>
                                 <option value="60">1 hour before</option>
