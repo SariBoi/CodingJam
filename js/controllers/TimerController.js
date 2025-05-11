@@ -621,8 +621,17 @@ export class TimerController {
             this.timerElements.progressBar.style.width = `${progress}%`;
             
             // Update focus mode timer if active
-            if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.clock) {
-                this.focusModeElements.clock.textContent = timeString;
+            if (this.focusModeManager.isFocusModeActive()) {
+                const focusClock = document.getElementById('focus-timer-clock');
+                const focusProgressBar = document.getElementById('focus-timer-progress-bar');
+                
+                if (focusClock) {
+                    focusClock.textContent = timeString;
+                }
+                
+                if (focusProgressBar) {
+                    focusProgressBar.style.width = `${progress}%`;
+                }
             }
         }
     }
@@ -647,8 +656,8 @@ export class TimerController {
                 this.timerElements.type.textContent = 'PAUSED';
                 
                 // Update focus mode type if active
-                if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.type) {
-                    this.focusModeElements.type.textContent = 'PAUSED';
+                if (this.focusModeManager.isFocusModeActive() && this.focusElements.type) {
+                    this.focusElements.type.textContent = 'PAUSED';
                 }
             } else {
                 // Add class based on session type
@@ -656,17 +665,31 @@ export class TimerController {
                     this.timerElements.container.classList.add('focus-state');
                     this.timerElements.type.textContent = 'FOCUS';
                     
-                    // Update focus mode type if active
-                    if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.type) {
-                        this.focusModeElements.type.textContent = 'FOCUS TIME';
+                    // Update focus mode type and theme if active
+                    if (this.focusModeManager.isFocusModeActive()) {
+                        const focusOverlay = document.getElementById('focus-mode-overlay');
+                        if (focusOverlay) {
+                            focusOverlay.classList.remove('break-state');
+                        }
+                        
+                        if (this.focusElements.type) {
+                            this.focusElements.type.textContent = 'FOCUS TIME';
+                        }
                     }
                 } else {
                     this.timerElements.container.classList.add('break-state');
                     this.timerElements.type.textContent = 'BREAK';
                     
-                    // Update focus mode type if active
-                    if (this.focusModeManager.isFocusModeActive() && this.focusModeElements.type) {
-                        this.focusModeElements.type.textContent = 'BREAK TIME';
+                    // Update focus mode type and theme if active
+                    if (this.focusModeManager.isFocusModeActive()) {
+                        const focusOverlay = document.getElementById('focus-mode-overlay');
+                        if (focusOverlay) {
+                            focusOverlay.classList.add('break-state');
+                        }
+                        
+                        if (this.focusElements.type) {
+                            this.focusElements.type.textContent = 'BREAK TIME';
+                        }
                     }
                 }
             }
@@ -685,13 +708,13 @@ export class TimerController {
             if (task) {
                 switch (task.status) {
                     case TaskStatus.ONGOING:
-                        statusText = 'In progress';
+                        statusText = 'In Progress';
                         break;
                     case TaskStatus.PARTIAL:
-                        statusText = 'Paused';
+                        statusText = 'Stopped';
                         break;
                     default:
-                        statusText = 'Ready to start';
+                        statusText = 'Ready To Start';
                         break;
                 }
             }
@@ -704,13 +727,13 @@ export class TimerController {
                 let statusText = '';
                 switch (task.status) {
                     case TaskStatus.ONGOING:
-                        statusText = 'In progress';
+                        statusText = 'In Progress';
                         break;
                     case TaskStatus.PARTIAL:
-                        statusText = 'Paused';
+                        statusText = 'Stopped';
                         break;
                     default:
-                        statusText = 'Ready to start';
+                        statusText = 'Ready To Start';
                         break;
                 }
                 
@@ -861,6 +884,7 @@ export class TimerController {
         }
     }
 }
+
     /**
      * Toggle focus mode
      */
@@ -872,7 +896,6 @@ export class TimerController {
         } else {
             // Make sure we have the current task and session
             const task = this.getActiveTask();
-            const session = this.sessionManager.getCurrentSession();
             
             // Only proceed if we have a task
             if (!task) {
@@ -880,6 +903,9 @@ export class TimerController {
                 alert('Please select a task before entering focus mode.');
                 return;
             }
+            
+            // Reset the manually disabled flag since user is explicitly enabling focus mode
+            this.focusModeManager.resetManuallyDisabled();
             
             this.enterFocusMode();
         }
@@ -913,7 +939,7 @@ export class TimerController {
      * Exit focus mode
      */
     exitFocusMode() {
-        this.focusModeManager.exitFocusMode();
+        this.focusModeManager.exitFocusMode(true); // Pass true to indicate manual exit
     }
 
     /**

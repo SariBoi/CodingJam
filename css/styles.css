@@ -238,14 +238,14 @@ body {
     max-width: 100%;
 }
 
-/* Focus Mode Overlay */
+/* Focus Mode Overlay Styles */
 .focus-mode-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(0, 0, 0, 0.95);
+    background-color: var(--dark-bg);  /* Default to dark background */
     z-index: 1050;
     display: flex;
     align-items: center;
@@ -255,36 +255,97 @@ body {
     transition: opacity 0.5s ease;
 }
 
+/* Make overlay fully opaque when active */
 .focus-mode-overlay.active {
     opacity: 1;
     pointer-events: all;
 }
 
+/* Break theme will invert colors */
+.focus-mode-overlay.break-state {
+    background-color: var(--light-bg); /* Light background for break state */
+    color: var(--light-text);
+}
+
 .focus-timer-display {
     text-align: center;
-    color: white;
+    width: 100%;
+    max-width: 600px;
+    padding: 40px;
 }
 
 .focus-timer-type {
-    font-size: 1.5rem;
-    margin-bottom: 10px;
-    color: rgba(255, 255, 255, 0.8);
+    font-size: 2rem;
+    margin-bottom: 20px;
+    color: var(--dark-accent);  /* Blue for focus */
+}
+
+.focus-mode-overlay.break-state .focus-timer-type {
+    color: var(--light-success);  /* Green for break */
 }
 
 .focus-timer-clock {
-    font-size: 6rem;
+    font-size: 8rem;
     font-weight: 700;
-    margin-bottom: 20px;
+    margin-bottom: 30px;
+    color: var(--dark-text);
+}
+
+.focus-mode-overlay.break-state .focus-timer-clock {
+    color: var(--light-text);
 }
 
 .focus-timer-task {
-    font-size: 1.25rem;
-    margin-bottom: 30px;
-    color: rgba(255, 255, 255, 0.9);
+    font-size: 1.5rem;
+    margin-bottom: 40px;
+    color: var(--dark-text-secondary);
+}
+
+.focus-mode-overlay.break-state .focus-timer-task {
+    color: var(--light-text-secondary);
+}
+
+/* Progress bar styles */
+.focus-timer-progress {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto 40px;
+}
+
+.focus-timer-progress .progress {
+    height: 10px;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.focus-timer-progress .progress-bar {
+    background-color: var(--dark-accent);  /* Blue for focus */
+    transition: width 1s linear;
+}
+
+.focus-mode-overlay.break-state .focus-timer-progress .progress-bar {
+    background-color: var(--light-success);  /* Green for break */
 }
 
 #exit-focus-mode-btn {
     margin-top: 40px;
+    padding: 10px 20px;
+    font-size: 1.2rem;
+}
+
+/* Adjust for different screen sizes */
+@media (max-width: 768px) {
+    .focus-timer-clock {
+        font-size: 5rem;
+    }
+    
+    .focus-timer-type {
+        font-size: 1.5rem;
+    }
+    
+    .focus-timer-task {
+        font-size: 1.2rem;
+    }
 }
 
 /* Recurring Task Options */

@@ -14,6 +14,7 @@ export class FocusModeManager {
      */
     constructor() {
         this.active = false;
+        this.manuallyDisabled = false; // New flag to track if user manually disabled focus mode
     }
 
     /**
@@ -23,6 +24,11 @@ export class FocusModeManager {
      * @param {Object} elements Focus mode UI elements
      */
     enterFocusMode(task, session, elements) {
+        // Don't enter focus mode if it was manually disabled by user
+        if (this.manuallyDisabled) {
+            return;
+        }
+        
         this.active = true;
         
         if (!elements || !elements.overlay) {
@@ -50,9 +56,15 @@ export class FocusModeManager {
 
     /**
      * Exit focus mode
+     * @param {boolean} setManuallyDisabled Whether this was a manual exit by user
      */
-    exitFocusMode() {
+    exitFocusMode(setManuallyDisabled = true) {
         this.active = false;
+        
+        // If this was a manual exit, set the flag to prevent auto re-entry
+        if (setManuallyDisabled) {
+            this.manuallyDisabled = true;
+        }
         
         // Find overlay element
         const overlay = document.getElementById('focus-mode-overlay');
@@ -62,6 +74,13 @@ export class FocusModeManager {
         
         // Exit full screen if in full screen mode
         this.exitFullScreen();
+    }
+
+    /**
+     * Reset the manually disabled flag
+     */
+    resetManuallyDisabled() {
+        this.manuallyDisabled = false;
     }
 
     /**
@@ -144,7 +163,7 @@ export class FocusModeManager {
         
         // Exit focus mode on Escape key
         if (event.key === 'Escape') {
-            this.exitFocusMode();
+            this.exitFocusMode(true); // Mark as manually disabled
         }
     }
 }
